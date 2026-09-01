@@ -41,18 +41,23 @@ jobs:
 
           cp node_modules/openscad-wasm/openscad.js site/vendor/openscad.js
           cp node_modules/three/build/three.module.js site/vendor/three/three.module.js
+          cp node_modules/three/build/three.core.js site/vendor/three/three.core.js
           cp node_modules/three/examples/jsm/controls/OrbitControls.js \
             site/vendor/three/addons/controls/OrbitControls.js
           cp node_modules/three/examples/jsm/loaders/STLLoader.js \
             site/vendor/three/addons/loaders/STLLoader.js
 
-          # The Three.js add-ons import the bare package name "three". GitHub
-          # Pages has no Node-style module resolver and some Android browsers
-          # do not support import maps reliably. Rewrite those imports to the
-          # vendored ESM module and fail the build if any bare import remains.
+          # Three r180 splits the browser build: three.module.js imports
+          # ./three.core.js. Both files must be deployed. The add-ons also
+          # import the bare package name "three"; rewrite those imports to the
+          # vendored module because GitHub Pages has no Node module resolver.
           python3 - <<'PY'
           import re
           from pathlib import Path
+
+          three_module = Path("site/vendor/three/three.module.js").read_text(encoding="utf-8")
+          if "from './three.core.js'" not in three_module and 'from "./three.core.js"' not in three_module:
+              raise SystemExit("unexpected Three.js build: three.module.js does not import three.core.js")
 
           for filename in (
               "site/vendor/three/addons/controls/OrbitControls.js",
@@ -118,8 +123,7 @@ jobs:
 
           # app.js itself is loaded with a commit query parameter by index.html.
           # Add the same immutable cache key to its dynamically imported ESM
-          # dependencies so an Android browser cannot reuse an older add-on
-          # that still contained `from 'three'`.
+          # dependencies so an Android browser cannot reuse an older add-on.
           commit = os.environ["COMMIT_SHA"]
           app_path = Path("site/app.js")
           app = app_path.read_text(encoding="utf-8")
@@ -134,11 +138,11 @@ jobs:
           PY
 
           test -s site/vendor/openscad.js
+          test -s site/vendor/three/three.module.js
+          test -s site/vendor/three/three.core.js
           test -s site/scad-manifest.json
           test -f site/repo-src/parts/az_base.scad
 
-          # Catch the exact failure mode where the page loads but the UI never
-          # starts because a top-level module cannot resolve.
           node --check site/app.js
           ! grep -R -n -E "from[[:space:]]+['\"]three['\"]" \
             site/vendor/three/addons
@@ -157,6 +161,10 @@ jobs:
           assert f"OrbitControls.js?v={commit}" in app
           assert f"STLLoader.js?v={commit}" in app
           assert f"openscad.js?v={commit}" in app
+
+          three_module = Path("site/vendor/three/three.module.js").read_text()
+          assert "./three.core.js" in three_module
+          assert Path("site/vendor/three/three.core.js").stat().st_size > 100000
           print(f"manifest OK: {len(data['files'])} files, {len(data['entries'])} entries")
           PY
 
