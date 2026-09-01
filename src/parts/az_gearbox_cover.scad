@@ -37,6 +37,13 @@ module az_gearbox_cover() {
                 cylinder(d = 6.4, h = 2.2 + AZ_GLIDE_GAP + EPS);
         }
 
+        // Upper support for the M3 compound-gear axle. The same screw runs
+        // through the cover, compound gear and into the captive nut in the base.
+        translate([REDUCER_INTERMEDIATE[0], REDUCER_INTERMEDIATE[1], -EPS])
+            cylinder(d = M3_CLEARANCE_D, h = AZ_COVER_H + 2 * EPS);
+        translate([REDUCER_INTERMEDIATE[0], REDUCER_INTERMEDIATE[1], AZ_COVER_H - 2.2])
+            cylinder(d = 6.4, h = 2.2 + EPS);
+
         // Cable exit aligned with the slot already present in az_base.scad.
         rotate([0, 0, cable_angle])
             translate([AZ_BASE_D / 2 - 5.0, -5.0, -EPS])
