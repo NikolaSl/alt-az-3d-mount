@@ -6,14 +6,6 @@
   <meta name="theme-color" content="#111827" />
   <title>Alt-Az 3D Mount — OpenSCAD Validator</title>
   <link rel="stylesheet" href="./style.css" />
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "./vendor/three/three.module.js",
-      "three/addons/": "./vendor/three/addons/"
-    }
-  }
-  </script>
 </head>
 <body>
   <header>
@@ -34,7 +26,7 @@
     <a id="sourceLink" class="button-link" href="#" target="_blank" rel="noreferrer">Source at this commit</a>
   </section>
 
-  <div id="status" class="status">Loading repository manifest…</div>
+  <div id="status" class="status">Starting viewer…</div>
 
   <main>
     <section class="panel viewer-panel">
@@ -55,7 +47,7 @@
   </main>
 
   <details class="log-panel">
-    <summary>OpenSCAD console</summary>
+    <summary>Diagnostics / OpenSCAD console</summary>
     <pre id="consoleLog"></pre>
   </details>
 
@@ -63,6 +55,23 @@
     The source snapshot and the OpenSCAD WebAssembly runtime are served from this GitHub Pages deployment. Rendering happens locally in the browser; no CAD server is required.
   </footer>
 
+  <script>
+    // Keep failures visible even when the ES module itself cannot start.
+    window.addEventListener("error", event => {
+      const status = document.querySelector("#status");
+      const log = document.querySelector("#consoleLog");
+      const message = event.message || "JavaScript loading error";
+      if (status) status.textContent = `Viewer JavaScript error: ${message}`;
+      if (log) log.textContent += `ERR ${message}\n`;
+    });
+    window.addEventListener("unhandledrejection", event => {
+      const status = document.querySelector("#status");
+      const log = document.querySelector("#consoleLog");
+      const message = event.reason?.message || String(event.reason || "Unhandled promise rejection");
+      if (status) status.textContent = `Viewer error: ${message}`;
+      if (log) log.textContent += `ERR ${message}\n`;
+    });
+  </script>
   <script type="module" src="./app.js"></script>
 </body>
 </html>
