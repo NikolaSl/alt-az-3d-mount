@@ -39,14 +39,24 @@ jobs:
           mkdir -p site/vendor/three/addons/controls
           mkdir -p site/vendor/three/addons/loaders
 
-          # openscad.js contains the browser WebAssembly runtime shipped by
-          # the openscad-wasm package. It is copied into the Pages artifact,
-          # so rendering does not depend on a third-party CAD service.
           cp node_modules/openscad-wasm/openscad.js site/vendor/openscad.js
           cp node_modules/three/build/three.module.js site/vendor/three/three.module.js
           cp node_modules/three/examples/jsm/controls/OrbitControls.js \
             site/vendor/three/addons/controls/OrbitControls.js
           cp node_modules/three/examples/jsm/loaders/STLLoader.js \
+            site/vendor/three/addons/loaders/STLLoader.js
+
+          # Avoid import maps and bare module specifiers. Android in-app
+          # browsers/WebViews can lag Chromium's import-map support. Make the
+          # add-ons self-contained by pointing them at the vendored module.
+          sed -i "s/from 'three';/from '..\/..\/three.module.js';/" \
+            site/vendor/three/addons/controls/OrbitControls.js
+          sed -i "s/from 'three';/from '..\/..\/three.module.js';/" \
+            site/vendor/three/addons/loaders/STLLoader.js
+
+          grep -q "from '../../three.module.js';" \
+            site/vendor/three/addons/controls/OrbitControls.js
+          grep -q "from '../../three.module.js';" \
             site/vendor/three/addons/loaders/STLLoader.js
 
       - name: Snapshot SCAD sources and generate manifest
@@ -99,6 +109,19 @@ jobs:
           test -s site/vendor/openscad.js
           test -s site/scad-manifest.json
           test -f site/repo-src/parts/az_base.scad
+
+          # Catch the exact failure mode where the page loads but the UI never
+          # starts because a top-level module cannot resolve.
+          node --check site/app.js
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('site/scad-manifest.json').read_text())
+          assert data['files'], 'manifest has no SCAD files'
+          assert data['entries'], 'manifest has no renderable entries'
+          assert any(x['path'] == 'parts/az_base.scad' for x in data['entries'])
+          print(f"manifest OK: {len(data['files'])} files, {len(data['entries'])} entries")
+          PY
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v4
