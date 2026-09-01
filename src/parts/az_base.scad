@@ -2,9 +2,6 @@ include <../config.scad>
 use <../lib/util.scad>
 use <../lib/hardware.scad>
 
-AZ_BASE_D = 132.0;
-AZ_COVER_BOLT_R = 59.0;
-
 module az_base() {
     difference() {
         union() {
