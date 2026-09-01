@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111827" />
+  <title>Alt-Az 3D Mount — OpenSCAD Validator</title>
+  <link rel="stylesheet" href="./style.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three/three.module.js",
+      "three/addons/": "./vendor/three/addons/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Alt-Az 3D Mount</h1>
+      <p>Repository OpenSCAD → WebAssembly → STL validator</p>
+    </div>
+    <a id="repoLink" class="repo-link" href="https://github.com/NikolaSl/alt-az-3d-mount" target="_blank" rel="noreferrer">GitHub repository</a>
+  </header>
+
+  <section class="toolbar" aria-label="Model controls">
+    <label>
+      SCAD entry point
+      <select id="modelSelect"></select>
+    </label>
+    <button id="renderButton" type="button">Render with OpenSCAD</button>
+    <button id="downloadButton" type="button" disabled>Download generated STL</button>
+    <a id="sourceLink" class="button-link" href="#" target="_blank" rel="noreferrer">Source at this commit</a>
+  </section>
+
+  <div id="status" class="status">Loading repository manifest…</div>
+
+  <main>
+    <section class="panel viewer-panel">
+      <div class="panel-title">
+        <span>Generated STL</span>
+        <span id="meshInfo" class="muted">not rendered</span>
+      </div>
+      <div id="viewer" aria-label="Interactive 3D model viewer"></div>
+    </section>
+
+    <section class="panel source-panel">
+      <div class="panel-title">
+        <span>Exact repository source</span>
+        <span id="commitInfo" class="muted"></span>
+      </div>
+      <pre id="sourceCode" tabindex="0"></pre>
+    </section>
+  </main>
+
+  <details class="log-panel">
+    <summary>OpenSCAD console</summary>
+    <pre id="consoleLog"></pre>
+  </details>
+
+  <footer>
+    The source snapshot and the OpenSCAD WebAssembly runtime are served from this GitHub Pages deployment. Rendering happens locally in the browser; no CAD server is required.
+  </footer>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
