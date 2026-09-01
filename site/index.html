@@ -56,7 +56,7 @@
   </footer>
 
   <script>
-    // Keep failures visible even when the ES module itself cannot start.
+    // Keep failures visible even when an ES module itself cannot start.
     window.addEventListener("error", event => {
       const status = document.querySelector("#status");
       const log = document.querySelector("#consoleLog");
@@ -72,6 +72,24 @@
       if (log) log.textContent += `ERR ${message}\n`;
     });
   </script>
-  <script type="module" src="./app.js"></script>
+
+  <script type="module">
+    // Load app.js using the deployed commit as a cache key. This is important
+    // on Android where an older ES module and its dependencies may remain in
+    // the browser cache even after the GitHub Pages deployment changes.
+    try {
+      const manifestUrl = new URL(`./scad-manifest.json?bootstrap=${Date.now()}`, window.location.href);
+      const response = await fetch(manifestUrl, { cache: "no-store" });
+      if (!response.ok) throw new Error(`Cannot bootstrap viewer manifest: HTTP ${response.status}`);
+      const manifest = await response.json();
+      const version = manifest.commit || String(Date.now());
+      const appUrl = new URL(`./app.js?v=${encodeURIComponent(version)}`, window.location.href);
+      await import(appUrl.href);
+    } catch (error) {
+      const message = error?.message || String(error);
+      document.querySelector("#status").textContent = `Viewer bootstrap failed: ${message}`;
+      document.querySelector("#consoleLog").textContent += `ERR ${error?.stack || message}\n`;
+    }
+  </script>
 </body>
 </html>
