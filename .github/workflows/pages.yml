@@ -1,0 +1,120 @@
+name: Deploy OpenSCAD browser validator
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Vendor OpenSCAD WebAssembly and Three.js
+        run: |
+          npm install --ignore-scripts --no-save --no-package-lock \
+            openscad-wasm@0.0.4 \
+            three@0.180.0
+
+          mkdir -p site/vendor/three/addons/controls
+          mkdir -p site/vendor/three/addons/loaders
+
+          # openscad.js contains the browser WebAssembly runtime shipped by
+          # the openscad-wasm package. It is copied into the Pages artifact,
+          # so rendering does not depend on a third-party CAD service.
+          cp node_modules/openscad-wasm/openscad.js site/vendor/openscad.js
+          cp node_modules/three/build/three.module.js site/vendor/three/three.module.js
+          cp node_modules/three/examples/jsm/controls/OrbitControls.js \
+            site/vendor/three/addons/controls/OrbitControls.js
+          cp node_modules/three/examples/jsm/loaders/STLLoader.js \
+            site/vendor/three/addons/loaders/STLLoader.js
+
+      - name: Snapshot SCAD sources and generate manifest
+        env:
+          REPOSITORY: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          rm -rf site/repo-src
+          cp -R src site/repo-src
+          touch site/.nojekyll
+
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("src")
+          files = []
+          entry_prefixes = ("parts/", "assemblies/", "adapters/")
+
+          for path in sorted(root.rglob("*.scad")):
+              rel = path.relative_to(root).as_posix()
+              files.append({
+                  "path": rel,
+                  "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+              })
+
+          entries = []
+          for item in files:
+              rel = item["path"]
+              if rel.startswith(entry_prefixes):
+                  stem = Path(rel).stem.replace("_", " ")
+                  entries.append({"path": rel, "label": f"{stem} — {rel}"})
+
+          if not entries:
+              entries = [{"path": item["path"], "label": item["path"]} for item in files]
+
+          manifest = {
+              "repository": os.environ["REPOSITORY"],
+              "commit": os.environ["COMMIT_SHA"],
+              "files": files,
+              "entries": entries,
+          }
+          Path("site/scad-manifest.json").write_text(
+              json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+
+          test -s site/vendor/openscad.js
+          test -s site/scad-manifest.json
+          test -f site/repo-src/parts/az_base.scad
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
