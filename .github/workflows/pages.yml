@@ -46,18 +46,29 @@ jobs:
           cp node_modules/three/examples/jsm/loaders/STLLoader.js \
             site/vendor/three/addons/loaders/STLLoader.js
 
-          # Avoid import maps and bare module specifiers. Android in-app
-          # browsers/WebViews can lag Chromium's import-map support. Make the
-          # add-ons self-contained by pointing them at the vendored module.
-          sed -i "s/from 'three';/from '..\/..\/three.module.js';/" \
-            site/vendor/three/addons/controls/OrbitControls.js
-          sed -i "s/from 'three';/from '..\/..\/three.module.js';/" \
-            site/vendor/three/addons/loaders/STLLoader.js
+          # The Three.js add-ons import the bare package name "three". GitHub
+          # Pages has no Node-style module resolver and some Android browsers
+          # do not support import maps reliably. Rewrite those imports to the
+          # vendored ESM module and fail the build if any bare import remains.
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
 
-          grep -q "from '../../three.module.js';" \
-            site/vendor/three/addons/controls/OrbitControls.js
-          grep -q "from '../../three.module.js';" \
-            site/vendor/three/addons/loaders/STLLoader.js
+          for filename in (
+              "site/vendor/three/addons/controls/OrbitControls.js",
+              "site/vendor/three/addons/loaders/STLLoader.js",
+          ):
+              path = Path(filename)
+              text = path.read_text(encoding="utf-8")
+              text = re.sub(
+                  r"from\s+(['\"])three\1",
+                  "from '../../three.module.js'",
+                  text,
+              )
+              path.write_text(text, encoding="utf-8")
+              if re.search(r"from\s+['\"]three['\"]", text):
+                  raise SystemExit(f"bare Three.js import remains in {filename}")
+          PY
 
       - name: Snapshot SCAD sources and generate manifest
         env:
@@ -104,6 +115,22 @@ jobs:
           Path("site/scad-manifest.json").write_text(
               json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
           )
+
+          # app.js itself is loaded with a commit query parameter by index.html.
+          # Add the same immutable cache key to its dynamically imported ESM
+          # dependencies so an Android browser cannot reuse an older add-on
+          # that still contained `from 'three'`.
+          commit = os.environ["COMMIT_SHA"]
+          app_path = Path("site/app.js")
+          app = app_path.read_text(encoding="utf-8")
+          for asset in (
+              "./vendor/three/three.module.js",
+              "./vendor/three/addons/controls/OrbitControls.js",
+              "./vendor/three/addons/loaders/STLLoader.js",
+              "./vendor/openscad.js",
+          ):
+              app = app.replace(f'"{asset}"', f'"{asset}?v={commit}"')
+          app_path.write_text(app, encoding="utf-8")
           PY
 
           test -s site/vendor/openscad.js
@@ -113,13 +140,23 @@ jobs:
           # Catch the exact failure mode where the page loads but the UI never
           # starts because a top-level module cannot resolve.
           node --check site/app.js
+          ! grep -R -n -E "from[[:space:]]+['\"]three['\"]" \
+            site/vendor/three/addons
+
           python3 - <<'PY'
           import json
           from pathlib import Path
-          data = json.loads(Path('site/scad-manifest.json').read_text())
-          assert data['files'], 'manifest has no SCAD files'
-          assert data['entries'], 'manifest has no renderable entries'
-          assert any(x['path'] == 'parts/az_base.scad' for x in data['entries'])
+
+          data = json.loads(Path("site/scad-manifest.json").read_text())
+          assert data["files"], "manifest has no SCAD files"
+          assert data["entries"], "manifest has no renderable entries"
+          assert any(x["path"] == "parts/az_base.scad" for x in data["entries"])
+
+          app = Path("site/app.js").read_text()
+          commit = data["commit"]
+          assert f"OrbitControls.js?v={commit}" in app
+          assert f"STLLoader.js?v={commit}" in app
+          assert f"openscad.js?v={commit}" in app
           print(f"manifest OK: {len(data['files'])} files, {len(data['entries'])} entries")
           PY
 
