@@ -1,7 +1,3 @@
-import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { STLLoader } from "three/addons/loaders/STLLoader.js";
-
 const modelSelect = document.querySelector("#modelSelect");
 const renderButton = document.querySelector("#renderButton");
 const downloadButton = document.querySelector("#downloadButton");
@@ -17,30 +13,18 @@ let manifest;
 let scad;
 let scadLoading;
 let generatedStl;
+
+let THREE;
+let OrbitControls;
+let STLLoader;
+let scene;
+let camera;
+let renderer;
+let controls;
+let grid;
 let currentMesh;
-
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 5000);
-camera.up.set(0, 0, 1);
-
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-viewerEl.appendChild(renderer.domElement);
-
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.08;
-controls.target.set(0, 0, 0);
-
-scene.add(new THREE.HemisphereLight(0xffffff, 0x253047, 2.0));
-const keyLight = new THREE.DirectionalLight(0xffffff, 2.5);
-keyLight.position.set(100, -120, 180);
-scene.add(keyLight);
-
-const grid = new THREE.GridHelper(240, 24, 0x59657a, 0x2d3748);
-grid.rotation.x = Math.PI / 2;
-grid.position.z = -0.02;
-scene.add(grid);
+let viewerReady = false;
+let viewerLoading;
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -54,20 +38,6 @@ function log(text, isError = false) {
 
 function clearLog() {
   consoleLog.textContent = "";
-}
-
-function resizeViewer() {
-  const width = Math.max(1, viewerEl.clientWidth);
-  const height = Math.max(1, viewerEl.clientHeight);
-  renderer.setSize(width, height, false);
-  camera.aspect = width / height;
-  camera.updateProjectionMatrix();
-}
-
-function animate() {
-  requestAnimationFrame(animate);
-  controls.update();
-  renderer.render(scene, camera);
 }
 
 function ensureDirectory(fs, path) {
@@ -89,7 +59,8 @@ async function sha256Hex(bytes) {
 }
 
 async function fetchRepoFile(file) {
-  const response = await fetch(new URL(`./repo-src/${file.path}`, import.meta.url));
+  const url = new URL(`./repo-src/${file.path}`, import.meta.url);
+  const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) throw new Error(`Cannot load ${file.path}: HTTP ${response.status}`);
   const buffer = await response.arrayBuffer();
   const digest = await sha256Hex(buffer);
@@ -99,6 +70,119 @@ async function fetchRepoFile(file) {
   return new Uint8Array(buffer);
 }
 
+async function loadManifest() {
+  setStatus("Loading repository manifest…");
+  const url = new URL("./scad-manifest.json", import.meta.url);
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error(`Cannot load manifest: HTTP ${response.status}`);
+  const data = await response.json();
+  if (!Array.isArray(data.files) || !Array.isArray(data.entries)) {
+    throw new Error("Invalid repository manifest format");
+  }
+  if (!data.entries.length) throw new Error("No renderable SCAD entry points were found.");
+  manifest = data;
+  log(`Manifest loaded: ${manifest.files.length} SCAD files, ${manifest.entries.length} entry point(s).`);
+}
+
+function selectedEntry() {
+  return manifest?.entries.find(entry => entry.path === modelSelect.value);
+}
+
+async function showSelectedSource() {
+  const entry = selectedEntry();
+  if (!entry) return;
+
+  const file = manifest.files.find(item => item.path === entry.path);
+  if (!file) throw new Error(`Manifest entry ${entry.path} has no source file record`);
+
+  setStatus(`Loading and verifying ${entry.path}…`);
+  const bytes = await fetchRepoFile(file);
+  sourceCode.textContent = new TextDecoder().decode(bytes);
+
+  const commit = manifest.commit;
+  sourceLink.href = `https://github.com/${manifest.repository}/blob/${commit}/src/${entry.path}`;
+  commitInfo.textContent = commit.slice(0, 8);
+  generatedStl = undefined;
+  downloadButton.disabled = true;
+  meshInfo.textContent = "not rendered";
+  setStatus(`Selected ${entry.path}. Source SHA-256 verified.`);
+}
+
+async function loadViewerModules() {
+  const threeUrl = new URL("./vendor/three/three.module.js", import.meta.url).href;
+  const controlsUrl = new URL("./vendor/three/addons/controls/OrbitControls.js", import.meta.url).href;
+  const loaderUrl = new URL("./vendor/three/addons/loaders/STLLoader.js", import.meta.url).href;
+
+  const [threeModule, controlsModule, loaderModule] = await Promise.all([
+    import(threeUrl),
+    import(controlsUrl),
+    import(loaderUrl)
+  ]);
+
+  THREE = threeModule;
+  OrbitControls = controlsModule.OrbitControls;
+  STLLoader = loaderModule.STLLoader;
+}
+
+function resizeViewer() {
+  if (!viewerReady || !renderer || !camera) return;
+  const width = Math.max(1, viewerEl.clientWidth);
+  const height = Math.max(1, viewerEl.clientHeight);
+  renderer.setSize(width, height, false);
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+}
+
+function animate() {
+  if (!viewerReady) return;
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+async function initViewer() {
+  if (viewerReady) return;
+  if (viewerLoading) return viewerLoading;
+
+  viewerLoading = (async () => {
+    setStatus("Loading 3D viewer modules…");
+    await loadViewerModules();
+
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(38, 1, 0.1, 5000);
+    camera.up.set(0, 0, 1);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    viewerEl.replaceChildren(renderer.domElement);
+
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.target.set(0, 0, 0);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x253047, 2.0));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.5);
+    keyLight.position.set(100, -120, 180);
+    scene.add(keyLight);
+
+    grid = new THREE.GridHelper(240, 24, 0x59657a, 0x2d3748);
+    grid.rotation.x = Math.PI / 2;
+    grid.position.z = -0.02;
+    scene.add(grid);
+
+    viewerReady = true;
+    resizeViewer();
+    animate();
+    log("Three.js 3D viewer initialized.");
+  })().catch(error => {
+    viewerLoading = undefined;
+    throw error;
+  });
+
+  return viewerLoading;
+}
+
 async function loadOpenSCAD() {
   if (scad) return scad;
   if (scadLoading) return scadLoading;
@@ -106,12 +190,19 @@ async function loadOpenSCAD() {
   scadLoading = (async () => {
     setStatus("Loading OpenSCAD WebAssembly runtime… first load is about 13 MB.");
     const moduleUrl = new URL("./vendor/openscad.js", import.meta.url).href;
-    const { default: OpenSCAD } = await import(moduleUrl);
-    const instance = await OpenSCAD({
-      noInitialRun: true,
+    const wasmModule = await import(moduleUrl);
+    if (typeof wasmModule.createOpenSCAD !== "function") {
+      throw new Error("OpenSCAD WebAssembly module does not export createOpenSCAD()");
+    }
+
+    const api = await wasmModule.createOpenSCAD({
       print: text => log(text),
       printErr: text => log(text, true)
     });
+    const instance = api.getInstance();
+    if (!instance?.FS || typeof instance.callMain !== "function") {
+      throw new Error("OpenSCAD WebAssembly runtime did not initialize correctly");
+    }
 
     ensureDirectory(instance.FS, "/workspace/src");
     setStatus(`Verifying and mounting ${manifest.files.length} repository SCAD files…`);
@@ -135,29 +226,8 @@ async function loadOpenSCAD() {
   return scadLoading;
 }
 
-function selectedEntry() {
-  return manifest.entries.find(entry => entry.path === modelSelect.value);
-}
-
-async function showSelectedSource() {
-  const entry = selectedEntry();
-  if (!entry) return;
-
-  const file = manifest.files.find(item => item.path === entry.path);
-  const bytes = await fetchRepoFile(file);
-  sourceCode.textContent = new TextDecoder().decode(bytes);
-
-  const commit = manifest.commit;
-  sourceLink.href = `https://github.com/${manifest.repository}/blob/${commit}/src/${entry.path}`;
-  commitInfo.textContent = commit.slice(0, 8);
-  generatedStl = undefined;
-  downloadButton.disabled = true;
-  meshInfo.textContent = "not rendered";
-  setStatus(`Selected ${entry.path}. Source SHA-256 verified.`);
-}
-
 function removeCurrentMesh() {
-  if (!currentMesh) return;
+  if (!currentMesh || !scene) return;
   scene.remove(currentMesh);
   currentMesh.geometry.dispose();
   currentMesh.material.dispose();
@@ -165,6 +235,8 @@ function removeCurrentMesh() {
 }
 
 function displayStl(bytes) {
+  if (!viewerReady) throw new Error("3D viewer is not available");
+
   const exactBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
   const geometry = new STLLoader().parse(exactBuffer);
   geometry.computeVertexNormals();
@@ -220,16 +292,27 @@ async function renderSelected() {
     setStatus(`Rendering ${entry.path} with OpenSCAD WebAssembly…`);
     const exitCode = instance.callMain([
       `/workspace/src/${entry.path}`,
-      "--enable=manifold",
       "-o",
       output
     ]);
 
-    if (exitCode !== 0) throw new Error(`OpenSCAD returned exit code ${exitCode}`);
+    if (typeof exitCode === "number" && exitCode !== 0) {
+      throw new Error(`OpenSCAD returned exit code ${exitCode}`);
+    }
+
     generatedStl = instance.FS.readFile(output);
-    displayStl(generatedStl);
+    if (!generatedStl?.length) throw new Error("OpenSCAD produced an empty STL file");
     downloadButton.disabled = false;
-    setStatus(`Rendered ${entry.path} locally from repository commit ${manifest.commit.slice(0, 8)}.`);
+
+    try {
+      await initViewer();
+      displayStl(generatedStl);
+      setStatus(`Rendered and displayed ${entry.path} from repository commit ${manifest.commit.slice(0, 8)}.`);
+    } catch (viewerError) {
+      log(`3D display unavailable: ${viewerError.message}`, true);
+      meshInfo.textContent = `${generatedStl.length.toLocaleString()} STL bytes generated`;
+      setStatus(`STL generated successfully, but 3D display is unavailable: ${viewerError.message}`);
+    }
   } catch (error) {
     log(error?.stack || String(error), true);
     setStatus(`Render failed: ${error?.message || error}`);
@@ -254,14 +337,8 @@ function downloadStl() {
 }
 
 async function init() {
-  resizeViewer();
-  animate();
+  await loadManifest();
 
-  const response = await fetch(new URL("./scad-manifest.json", import.meta.url));
-  if (!response.ok) throw new Error(`Cannot load manifest: HTTP ${response.status}`);
-  manifest = await response.json();
-
-  if (!manifest.entries.length) throw new Error("No renderable SCAD entry points were found.");
   for (const entry of manifest.entries) {
     const option = document.createElement("option");
     option.value = entry.path;
@@ -269,12 +346,26 @@ async function init() {
     modelSelect.appendChild(option);
   }
 
-  modelSelect.addEventListener("change", () => showSelectedSource().catch(error => setStatus(error.message)));
+  modelSelect.addEventListener("change", () => showSelectedSource().catch(error => {
+    log(error?.stack || String(error), true);
+    setStatus(`Source load failed: ${error.message}`);
+  }));
   renderButton.addEventListener("click", renderSelected);
   downloadButton.addEventListener("click", downloadStl);
   window.addEventListener("resize", resizeViewer);
 
   await showSelectedSource();
+
+  // Viewer initialization is deliberately after manifest/source loading.
+  // This keeps repository files usable even in a browser/WebView where WebGL
+  // or advanced module loading is unavailable.
+  try {
+    await initViewer();
+    setStatus(`Ready. ${manifest.entries.length} renderable SCAD file(s) from commit ${manifest.commit.slice(0, 8)}.`);
+  } catch (error) {
+    log(`3D viewer initialization failed: ${error?.stack || error}`, true);
+    setStatus(`Source loaded. 3D viewer unavailable: ${error?.message || error}`);
+  }
 }
 
 init().catch(error => {
