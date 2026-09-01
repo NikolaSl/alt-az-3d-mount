@@ -33,19 +33,11 @@ def run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
 
 def render_png(src: Path, out: Path, camera: str, cwd: Path) -> str:
     cmd = [
-        "xvfb-run",
-        "-a",
-        "openscad",
-        "--preview=throwntogether",
-        "--projection=o",
-        "--autocenter",
-        "--viewall",
-        "--imgsize=900,700",
-        f"--camera={camera}",
-        "--view=edges",
-        "-o",
-        str(out),
-        str(src),
+        "xvfb-run", "-a", "openscad",
+        "--preview=throwntogether", "--projection=o",
+        "--autocenter", "--viewall", "--imgsize=900,700",
+        f"--camera={camera}", "--view=edges",
+        "-o", str(out), str(src),
     ]
     p = run(cmd, cwd)
     if p.returncode != 0 or not out.exists():
@@ -54,10 +46,7 @@ def render_png(src: Path, out: Path, camera: str, cwd: Path) -> str:
 
 
 def stl_check(src: Path, out: Path, cwd: Path) -> dict:
-    p = run(
-        ["openscad", "--render", "--hardwarnings", "-o", str(out), str(src)],
-        cwd,
-    )
+    p = run(["openscad", "--render", "--hardwarnings", "-o", str(out), str(src)], cwd)
     text = p.stdout
     simple = bool(re.search(r"Simple:\s+yes", text))
     stats = {}
@@ -65,23 +54,19 @@ def stl_check(src: Path, out: Path, cwd: Path) -> dict:
         match = re.search(rf"{key}:\s+(\d+)", text)
         if match:
             stats[key.lower()] = int(match.group(1))
-
     if p.returncode != 0 or not out.exists() or not simple:
         raise RuntimeError(f"STL/CGAL validation failed for {src}\n{text}")
-
     mesh = trimesh.load_mesh(out, force="mesh")
     stats["watertight"] = bool(mesh.is_watertight)
     stats["bounds_mm"] = [float(x) for x in mesh.extents]
     if not mesh.is_watertight:
         raise RuntimeError(f"Mesh is not watertight: {out}")
-
     return {"simple": simple, **stats, "log": text}
 
 
 def section_plot(stl: Path, axis: str, out: Path) -> None:
     mesh = trimesh.load_mesh(stl, force="mesh")
     center = mesh.bounding_box.centroid
-
     if axis == "x":
         normal = [1, 0, 0]
         origin = [center[0], 0, 0]
@@ -92,23 +77,14 @@ def section_plot(stl: Path, axis: str, out: Path) -> None:
         xlabel, ylabel = "X (mm)", "Z (mm)"
     else:
         raise ValueError(axis)
-
     section = mesh.section(plane_origin=origin, plane_normal=normal)
     fig, ax = plt.subplots(figsize=(6, 5), dpi=150)
     if section is None:
-        ax.text(
-            0.5,
-            0.5,
-            "No intersection",
-            ha="center",
-            va="center",
-            transform=ax.transAxes,
-        )
+        ax.text(0.5, 0.5, "No intersection", ha="center", va="center", transform=ax.transAxes)
     else:
         planar, _ = section.to_2D()
         for entity in planar.discrete:
             ax.plot(entity[:, 0], entity[:, 1], linewidth=1.3)
-
     ax.set_aspect("equal", adjustable="box")
     ax.grid(True, linewidth=0.35)
     ax.set_xlabel(xlabel)
@@ -130,7 +106,6 @@ def contact_sheet(images: list[tuple[str, Path]], out: Path) -> None:
         canvas.paste(image, (x, y))
         ImageDraw.Draw(canvas).text((12, 8), label, fill="black")
         thumbs.append(canvas)
-
     cols = 3
     rows = (len(thumbs) + cols - 1) // cols
     sheet = Image.new("RGB", (cols * 460, rows * 390), "white")
@@ -144,6 +119,14 @@ def main() -> None:
     parser.add_argument("scad")
     parser.add_argument("--name")
     parser.add_argument("--out", default="build/qa")
+    parser.add_argument(
+        "--preview-only",
+        action="store_true",
+        help=(
+            "Skip expensive CGAL/STL and section checks. Use for assemblies whose "
+            "individual printable parts already passed full QA."
+        ),
+    )
     args = parser.parse_args()
 
     src = Path(args.scad).resolve()
@@ -152,24 +135,28 @@ def main() -> None:
     outdir = root / args.out / name
     outdir.mkdir(parents=True, exist_ok=True)
 
-    stl = outdir / f"{name}.stl"
-    stats = stl_check(src, stl, root)
+    stats = {}
     rendered = []
+    if not args.preview_only:
+        stl = outdir / f"{name}.stl"
+        stats = stl_check(src, stl, root)
 
     for view, camera in VIEWS.items():
         path = outdir / f"{view}.png"
         render_png(src, path, camera, root)
         rendered.append((view, path))
 
-    for axis in ("x", "y"):
-        path = outdir / f"section-{axis}.png"
-        section_plot(stl, axis, path)
-        rendered.append((f"section {axis}", path))
+    if not args.preview_only:
+        for axis in ("x", "y"):
+            path = outdir / f"section-{axis}.png"
+            section_plot(stl, axis, path)
+            rendered.append((f"section {axis}", path))
 
     contact_sheet(rendered, outdir / "contact-sheet.png")
 
     report = {key: value for key, value in stats.items() if key != "log"}
     report["source"] = str(src.relative_to(root))
+    report["mode"] = "preview-only" if args.preview_only else "full"
     (outdir / "qa.json").write_text(json.dumps(report, indent=2) + "\n")
 
     print(json.dumps(report, indent=2))
