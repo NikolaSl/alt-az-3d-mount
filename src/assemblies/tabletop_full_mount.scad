@@ -2,11 +2,14 @@ include <../config.scad>
 use <full_mount.scad>
 use <../parts/tabletop_base_adapter.scad>
 
+AZ_ANGLE = is_undef(AZ_ANGLE) ? 0 : AZ_ANGLE;
 ALT_ANGLE = is_undef(ALT_ANGLE) ? 0 : ALT_ANGLE;
 
 module tabletop_full_mount(altitude_angle = ALT_ANGLE,
+                           azimuth_angle = AZ_ANGLE,
                            show_alt_guard = true) {
     full_mount(altitude_angle = altitude_angle,
+               azimuth_angle = azimuth_angle,
                show_alt_guard = show_alt_guard);
 
     translate([0, 0,
