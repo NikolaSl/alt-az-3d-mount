@@ -1,8 +1,8 @@
 # Assembly guide and hardware BOM
 
-Този файл е **source of truth за механичното сглобяване**. При промяна на механичен детайл трябва да се актуализират едновременно SCAD моделът, visual/assembly QA и съответната секция тук.
+Този файл е **source of truth за механичното сглобяване**. При промяна на механичен детайл трябва да се актуализират едновременно SCAD моделът, visual/assembly/motion QA и съответната секция тук.
 
-> **Статус:** CAD прототип с завършена двуосна кинематична верига и отделен широк tabletop adapter. AZ и ALT използват 28BYJ-48 + печатаем 20:1 редуктор. Преди production print остават физическите fit tests, реалните размери на конкретните мотори и окончателното физическо потвърждение на AZ/ALT drive interfaces.
+> **Статус:** CAD прототип с завършена двуосна кинематична верига, отделен широк tabletop adapter и **преминат structural two-axis motion QA**. AZ и ALT използват 28BYJ-48 + печатаем 20:1 редуктор. Преди production print остават физическите fit tests, реалните размери на конкретните мотори и окончателното физическо потвърждение на AZ/ALT drive interfaces, balance и tabletop stability.
 
 ## 1. Механична верига
 
@@ -85,6 +85,11 @@ tabletop_base_adapter              │
 - `src/assemblies/full_mount.scad`
 - `src/assemblies/tabletop_base_context.scad`
 - `src/assemblies/tabletop_full_mount.scad`
+
+Motion-QA диагностичните entry points също не се печатат:
+
+- `src/assemblies/motion_collision_check.scad`
+- `src/assemblies/motion_clearance_asserts.scad`
 
 ## 3. Непечатни компоненти
 
@@ -278,7 +283,7 @@ ALT gearbox е фиксиран към **външната страна на `yok
 
 - [ ] Tabletop mode: adapter-ът не се клати, bolt head не опира в масата и pedestal locator няма страничен луфт извън проектния clearance.
 - [ ] Tabletop mode: с payload в най-неблагоприятната използвана ALT позиция няма тенденция към преобръщане; не приемай CAD footprint-а като доказателство за stability с неизвестен реален CG.
-- [ ] AZ прави 360° без binding.
+- [ ] AZ прави пълен физически 360° оборот без binding и без кабел/конектор да влиза в swept volume.
 - [ ] AZ turntable няма забележим radial wobble.
 - [ ] Yoke bridge не се движи спрямо turntable.
 - [ ] Двете yoke arms са успоредни.
@@ -287,11 +292,12 @@ ALT gearbox е фиксиран към **външната страна на `yok
 - [ ] ALT 60T output gear няма axial rubbing в plate/guard.
 - [ ] ALT compound gear има две опори на stationary axle-а: plate + guard roof.
 - [ ] ALT motor body не докосва yoke arm.
-- [ ] Payload plate не докосва arms/gearbox при -20°, 0°, 45° и 90°.
-- [ ] Всички кабели са извън gear paths.
+- [ ] С изключени мотори payload stage се премества плавно през **целия реален ALT диапазон -20°..+90°**, включително крайните позиции, без контакт, заклинване или опасно опъване на кабел.
+- [ ] След добавяне на реалните кабели/конектори се проверява целият AZ×ALT motion envelope, а не само четири статични пози.
+- [ ] Всички кабели са извън gear paths и имат достатъчен service loop за целия диапазон.
 - [ ] Payload е балансиран.
 
-Powered tests: без товар → ~250 g → ~500 g → постепенно към проектния максимум под 1 kg.
+Powered tests: без товар → ~250 g → ~500 g → постепенно към проектния максимум под 1 kg. При всяка стъпка изпълни бавен full-range motion test преди по-висока скорост.
 
 ## 10. QA правило
 
@@ -299,13 +305,36 @@ Powered tests: без товар → ~250 g → ~500 g → постепенно 
 
 1. всеки нов printable SCAD се export-ва с full CGAL;
 2. OpenSCAD дава `Simple: yes`;
-3. STL е watertight и има един connected printable component;
-4. има ISO/top/bottom/front/right visual QA + сечения, когато са смислени;
-5. assembly QA проверява колизии с вече съществуващите части;
-6. `full_mount.scad`/relevant full assembly се проверява поне при ALT = -20°, 0°, 45°, 90° за motion-sensitive changes;
-7. този `ASSEMBLY.md` е актуализиран.
+3. STL е watertight и има очаквания connected-component count;
+4. има ISO/top/bottom/front/back/left/right visual QA + адаптивни сечения, когато са смислени;
+5. assembly QA проверява колизии с вече съществуващите части и assembly feasibility;
+6. всяка промяна, която засяга движещ се детайл, clearance или swept volume, задължително изпълнява **`MOTION_QA_PROTOCOL.md`** през целия разрешен диапазон, включително крайни позиции, междинни точки и relevant coupled-axis configurations; четири статични ALT пози не са достатъчен motion gate;
+7. ако motion envelope е променен, `M-AZ`/`M-ALT` се маркират за revalidation в `INTERFACES.md` и се обновява `docs/motion-qa-results.md`;
+8. `PARTS.md`, `INTERFACES.md`, този `ASSEMBLY.md` и `PROJECT_STATE.md` са актуализирани според резултата.
 
-Последният ALT CAD QA премина за plate, guard, 12T, 48T/12T, 60T и spacer: `Simple: yes`, watertight, един connected component на детайл. Assembly QA при -20°/0°/45°/90° не показа колизия между payload plate, yoke и ALT gearbox.
+### Приет structural motion-QA checkpoint
+
+Текущият двуосен CAD премина автоматизиран motion QA; подробният source of evidence е `docs/motion-qa-results.md`.
+
+```text
+ALT collision/distance sweep: -20° .. +90°
+resolution: 1°
+sampled ALT poses: 111
+collisions: 0
+minimum payload → upper structure: 6.000 mm @ ALT -20°
+minimum payload → conservative lower structure: 43.000 mm @ ALT +90°
+0.50 mm expanded lower envelope: 42.500 mm remaining @ ALT +90°
+
+AZ actual-assembly compile sweep: 0° .. 360° every 10°
+samples: 37 including wrap endpoint
+coupled AZ/ALT grid: 32 configurations
+representative human-review renders: 10
+result: PASS
+```
+
+За текущата механика structural collision clearance е AZ-invariant, защото upper structure и payload се въртят заедно около AZ, а lower diagnostic envelope е умишлено rotationally symmetric solid superset. Това **не важи автоматично** за бъдещи асиметрични кабели, конектори, electronics carriers или hard stops; добавянето им инвалидира motion checkpoint-а и изисква нов пълен sweep.
+
+Последният ALT part-level CAD QA премина за plate, guard, 12T, 48T/12T, 60T и spacer: `Simple: yes`, watertight, един connected component на детайл.
 
 Tabletop adapter CAD QA: `src/parts/tabletop_base_adapter.scad` мина full CGAL с `Simple: yes`, watertight STL и един connected printable component; bounds 190×190×8 mm. Context render с реалния `az_base` потвърди позиционирането на pedestal-а в locator-а и отделния bolt path. Пълният `tabletop_full_mount.scad` е публикуван за browser human review.
 
@@ -319,7 +348,7 @@ AZ compound axle трябва да се замрази след физическ
 
 ### VERIFY-ALT-DRIVE
 
-ALT drive е завършен в CAD и visual QA, но трябва физически fit test на: motor shaft, Double-D pinion, M3 shoulder axle, Ø8 output bore/spacer и grub-screw clamp. След него размерите се замразяват.
+ALT drive е завършен в CAD и structural motion QA, но трябва физически fit test на: motor shaft, Double-D pinion, M3 shoulder axle, Ø8 output bore/spacer и grub-screw clamp. След него размерите се замразяват.
 
 ### HOLD-MOTOR-DIMS
 
@@ -332,3 +361,7 @@ ALT drive е завършен в CAD и visual QA, но трябва физич�
 ### VERIFY-TABLETOP-STABILITY
 
 Ø190 tabletop footprint е CAD решение за flat-surface mode, не доказателство за устойчивост при произволен 1 kg товар. След physical assembly провери реалния CG, rubber-foot contact и overturn margin с конкретния payload преди unattended use.
+
+### VERIFY-CABLE-MOTION
+
+Кабелите, конекторите и бъдещата електроника все още не са част от приетия rotationally symmetric structural collision model. Когато бъдат добавени, те трябва да бъдат моделирани или поне представени с conservative envelopes и да се изпълни отново full coupled motion QA. При physical prototype изпълни бавен ръчен/захранен full-range test и наблюдавай strain, snagging и навлизане в gears.
