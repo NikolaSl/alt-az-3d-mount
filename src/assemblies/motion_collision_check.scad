@@ -1,11 +1,10 @@
 // Diagnostic boolean assembly for automated motion QA.
-// Exporting this file should produce EMPTY geometry when the selected moving
-// payload envelope does not collide with the selected fixed obstruction set.
+// Exporting this file should produce EMPTY geometry when the moving payload
+// does not collide with the selected fixed obstruction set.
 //
-// The diagnostic uses conservative external obstruction envelopes rather than
-// internal gear tooth geometry. The lower AZ/tabletop envelope is deliberately
-// rotationally symmetric and at least as large as the real exterior solids, so
-// clearance proven against it at one AZ angle applies to the full 0..360° sweep.
+// The lower diagnostic is a conservative rotationally symmetric envelope.
+// CLEARANCE_MARGIN expands that lower envelope analytically, avoiding expensive
+// 3D Minkowski operations during dense sweeps.
 
 include <../config.scad>
 use <yoke_stage.scad>
@@ -45,29 +44,17 @@ module payload_collision_body_local() {
     translate([0, 8, 0]) camera_screw_knob();
 }
 
-module payload_collision_body_local_with_margin() {
-    if (CLEARANCE_MARGIN > 0)
-        minkowski() {
-            payload_collision_body_local();
-            sphere(r = CLEARANCE_MARGIN, $fn = 10);
-        }
-    else
-        payload_collision_body_local();
-}
-
 module moving_payload_world() {
     rotate([0, 0, AZ_ANGLE])
         translate([0, 0, ALT_AXIS_Z_QA])
             rotate([ALT_ANGLE, 0, 0])
-                payload_collision_body_local_with_margin();
+                payload_collision_body_local();
 }
 
 module alt_external_obstruction_local() {
     alt_gearbox_plate();
     translate([0, 0, ALT_PLATE_T]) alt_gearbox_guard();
 
-    // Conservative motor body/boss envelope behind the plate. Internal gears
-    // are enclosed by the guard and are therefore not needed as collision solids.
     translate([ALT_MOTOR[0], ALT_MOTOR[1], 0])
         rotate([0, 0, ALT_MOTOR_ROT]) {
             translate([BYJ_BODY_CENTER_FROM_SHAFT[0],
@@ -87,21 +74,27 @@ module fixed_upper_obstructions() {
     }
 }
 
+module expanded_cylinder(d, h, z0, margin) {
+    translate([0, 0, z0 - margin])
+        cylinder(d = d + 2 * margin, h = h + 2 * margin);
+}
+
 module conservative_lower_obstructions() {
+    m = max(0, CLEARANCE_MARGIN);
+
     // Full solid envelopes intentionally fill openings and cable cut-outs.
-    // A payload that clears these solids clears the actual lower assembly.
-    cylinder(d = AZ_BASE_D, h = AZ_BASE_PLATE_H);
-    translate([0, 0, -AZ_PEDESTAL_H])
-        cylinder(d = AZ_PEDESTAL_D, h = AZ_PEDESTAL_H);
-    translate([0, 0, AZ_BASE_PLATE_H])
-        cylinder(d = AZ_BASE_D, h = AZ_COVER_H + AZ_GLIDE_GAP);
-    translate([0, 0, AZ_BASE_PLATE_H + AZ_COVER_H + AZ_GLIDE_GAP])
-        cylinder(d = AZ_TURNTABLE_D, h = AZ_TURNTABLE_H);
+    expanded_cylinder(AZ_BASE_D, AZ_BASE_PLATE_H, 0, m);
+    expanded_cylinder(AZ_PEDESTAL_D, AZ_PEDESTAL_H, -AZ_PEDESTAL_H, m);
+    expanded_cylinder(AZ_BASE_D, AZ_COVER_H + AZ_GLIDE_GAP,
+                      AZ_BASE_PLATE_H, m);
+    expanded_cylinder(AZ_TURNTABLE_D, AZ_TURNTABLE_H,
+                      AZ_BASE_PLATE_H + AZ_COVER_H + AZ_GLIDE_GAP, m);
 
     if (WITH_TABLETOP)
-        translate([0, 0,
-                   -AZ_PEDESTAL_H - TABLETOP_BASE_T + TABLETOP_LOCATOR_DEPTH])
-            cylinder(d = TABLETOP_BASE_D, h = TABLETOP_BASE_T);
+        expanded_cylinder(
+            TABLETOP_BASE_D, TABLETOP_BASE_T,
+            -AZ_PEDESTAL_H - TABLETOP_BASE_T + TABLETOP_LOCATOR_DEPTH,
+            m);
 }
 
 if (CHECK_MODE == 0)
