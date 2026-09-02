@@ -26,7 +26,7 @@ The repository must contain, as applicable:
 - live non-printed BOM;
 - required tools/consumables and physical fit tests;
 - exact assembly order to the best-known current machine;
-- browser-review/publishing mechanism.
+- browser-review/publishing mechanism and its performance/responsiveness rules.
 
 A chat may discuss alternatives, but once an alternative becomes a design decision or affects future work it must be written into the repository.
 
@@ -39,16 +39,17 @@ Recommended bootstrap order:
 1. `REPOSITORY_CONTRACT.md` — how the project must be maintained.
 2. `DESIGN_PROTOCOL.md` — generic parametric mechanical-design algorithm.
 3. `MOTION_QA_PROTOCOL.md` — mandatory full-range QA rules for mechanisms with moving parts.
-4. `PROJECT_STATE.md` — current checkpoint, trusted geometry, blockers and next steps.
-5. `README.md` — project purpose and high-level architecture.
-6. `PARTS.md` — decomposition, stable IDs, dependency/status ledger.
-7. `INTERFACES.md` — interface and motion contracts, invalidation map.
-8. `ASSEMBLY.md` — current printable parts, BOM and physical assembly sequence.
-9. `CALIBRATION.md` where present — physical measurement/fit state.
-10. `src/config.scad` — current shared parameter system and datums.
-11. QA documents/scripts under `docs/` and `tools/`, including the latest accepted result checkpoint such as `docs/motion-qa-results.md`.
-12. Relevant current partial/full assemblies under `src/assemblies/`.
-13. The exact neighboring part sources involved in the next task.
+4. `BROWSER_REVIEW_PROTOCOL.md` — responsive mobile CAD review/publication rules.
+5. `PROJECT_STATE.md` — current checkpoint, trusted geometry, blockers and next steps.
+6. `README.md` — project purpose and high-level architecture.
+7. `PARTS.md` — decomposition, stable IDs, dependency/status ledger.
+8. `INTERFACES.md` — interface and motion contracts, invalidation map.
+9. `ASSEMBLY.md` — current printable parts, BOM and physical assembly sequence.
+10. `CALIBRATION.md` where present — physical measurement/fit state.
+11. `src/config.scad` — current shared parameter system and datums.
+12. QA documents/scripts under `docs/` and `tools/`, including the latest accepted result checkpoint such as `docs/motion-qa-results.md`.
+13. Relevant current partial/full assemblies under `src/assemblies/`.
+14. The exact neighboring part sources involved in the next task.
 
 If `REQUIREMENTS.md` or machine-readable state files are introduced later, they become part of this bootstrap set.
 
@@ -81,20 +82,45 @@ For a mechanism with moving parts, four attractive static poses are not a substi
 
 ## 4. Browser publication is part of integration
 
-Human review must be possible from an ordinary modern browser, including a phone or tablet.
+Human review must be possible from an ordinary modern browser, including a phone or tablet. The reusable technical rules live in `BROWSER_REVIEW_PROTOCOL.md`.
 
-For this repository, GitHub Pages is the mobile human-in-the-loop review surface. The current site:
+For this repository, GitHub Pages is the mobile human-in-the-loop review surface. It must:
 
-- snapshots the repository `src/` tree on deployment;
-- builds a manifest of renderable SCAD entry points;
-- verifies source hashes;
-- loads OpenSCAD WebAssembly in the browser;
-- renders the selected SCAD to STL locally in the browser;
-- displays the generated STL with an interactive Three.js viewer;
-- exposes the exact source/commit used for the render;
-- links the persistent project state, assembly/BOM, calibration and QA-result documents.
+- snapshot the repository `src/` tree from the deployed commit;
+- build a manifest of renderable SCAD entry points;
+- preserve source hashes and expose the exact source/commit;
+- display a selected model interactively with Three.js;
+- publish fast derived STL previews for expensive review assemblies;
+- retain an explicit independent **Re-render in browser** path from exact source;
+- execute expensive browser CAD work in a Web Worker, never synchronously on the UI thread;
+- show phase + elapsed time + diagnostics and allow cancellation during long renders;
+- mount only the selected entry's recursive dependency closure where it can be resolved safely;
+- link the persistent project state, assembly/BOM, calibration and QA-result documents.
 
-Every new printable part and useful subsystem/full assembly must therefore have an appropriate OpenSCAD entry point under the published source tree so that it is selectable and renderable from the browser.
+The normal human-review path for an expensive assembly is therefore:
+
+```text
+repository commit
+→ GitHub Actions builds preview STL
+→ Pages publishes source snapshot + preview
+→ phone loads STL immediately
+→ human rotates/zooms/reviews
+```
+
+The independent validation/debug path is:
+
+```text
+Re-render in browser
+→ background Web Worker
+→ exact deployed source dependency closure
+→ OpenSCAD WebAssembly
+→ generated STL
+→ Three.js viewer
+```
+
+A trustworthy numeric progress percentage must not be fabricated when the CAD engine does not expose one. During opaque geometry computation an indeterminate progress bar plus elapsed time and live activity is the correct UI.
+
+Every new printable part and useful subsystem/full assembly must have an appropriate OpenSCAD entry point under the published source tree. Expensive subsystem/full assemblies should be added to the CI-prebuilt preview set when measured render cost justifies it; elementary parts should normally remain on-demand worker renders so publication time does not scale unnecessarily with part count.
 
 ### Browser-integration gate
 
@@ -103,9 +129,11 @@ After a major part/subsystem integration:
 1. ensure the SCAD entry point is under `src/parts/`, `src/assemblies/` or another manifest-published path;
 2. ensure the Pages workflow is triggered by the commit;
 3. ensure the published page can load the new source snapshot;
-4. render the new part/assembly in-browser;
-5. check orbit/zoom interaction on a phone-sized viewport when practical;
-6. use the published visualization as a human review gate before committing to expensive physical printing.
+4. ensure any expensive checkpoint assembly has a published CI preview;
+5. render/review the part or assembly in the browser;
+6. for an independent browser compile, confirm the page stays responsive and Cancel works while the worker renders;
+7. check orbit/zoom interaction on a phone-sized viewport when practical;
+8. use the published visualization as a human review gate before committing to expensive physical printing.
 
 A design that exists only as local/generated files but cannot be reviewed through the project browser surface is not fully integrated.
 
@@ -120,9 +148,13 @@ AI reads and modifies GitHub repository
         ↓
 repository preserves all engineering state
         ↓
-GitHub Actions executes QA and publishes current OpenSCAD sources
+GitHub Actions executes QA + builds expensive review previews
         ↓
-ordinary mobile browser runs OpenSCAD WebAssembly
+GitHub Pages publishes source snapshot + derived previews
+        ↓
+ordinary mobile browser loads preview immediately
+        ↓
+optional independent CAD re-render runs in background worker
         ↓
 human inspects part/subsystem/full assembly + QA state
         ↓
@@ -200,6 +232,7 @@ It should state at minimum:
 - current trusted/full assembly entry point;
 - major completed subsystems;
 - current accepted motion-QA checkpoint where moving mechanisms exist;
+- current browser-review/rendering architecture if it affects the mobile workflow;
 - provisional or physically unverified interfaces;
 - HOLD/BLOCKED items;
 - next recommended design or validation step;
@@ -235,10 +268,29 @@ A step is complete only when another session can:
 4. reproduce the relevant visual/geometric QA;
 5. reproduce the relevant full-range motion QA when moving geometry is involved;
 6. place it in the current assembly;
-7. see it in the browser-published project;
-8. identify what non-printed items are required;
-9. follow `ASSEMBLY.md` to physically integrate it and test its intended motion;
-10. know remaining risks/HOLD items;
-11. continue the next dependency without recovering lost context from chat.
+7. see it in the browser-published project without requiring an unresponsive multi-minute UI-thread compile;
+8. independently re-render it in-browser when desired without freezing the review page;
+9. identify what non-printed items are required;
+10. follow `ASSEMBLY.md` to physically integrate it and test its intended motion;
+11. know remaining risks/HOLD items;
+12. continue the next dependency without recovering lost context from chat.
 
 This rule is intentionally stricter than “the CAD compiles”. It is what makes the project durable across chats, devices and contributors.
+
+## 12. Browser scalability invariant
+
+Growing the repository must not make every browser render slower merely because unrelated files were added.
+
+Therefore future browser-review implementations should preserve these invariants unless there is a demonstrably better architecture:
+
+```text
+expensive CAD computation off UI thread
++ dependency-closure source mounting
++ CI-published preview for expensive assemblies
++ on-demand worker rendering for ordinary parts
++ honest phase/elapsed progress
++ cancellation
++ exact-commit source integrity
+```
+
+If the browser review becomes unresponsive as the project grows, that is an integration regression and should be fixed before the browser surface is treated as a valid human-review gate.
