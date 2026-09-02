@@ -2,7 +2,7 @@
 
 Параметрична, 3D-печатаема **алт-азимутална монтировка** за телефон, малка камера или компактна оптика. И двете оси използват 28BYJ-48 и допълнителен печатаем **20:1** редуктор (`12T → 48T/12T → 60T`). Проектната цел е добре балансиран товар под 1 kg.
 
-> **Статус: двуосен CAD прототип.** AZ, yoke, payload и моторизиран ALT drive вече имат отделни printable parts и virtual assemblies. Production print остава блокиран от реалните motor dimensions, printer fit calibration и физически fit tests. Виж `ASSEMBLY.md`.
+> **Статус: двуосен CAD прототип.** AZ, yoke, payload и моторизиран ALT drive вече имат отделни printable parts и virtual assemblies. Production print остава блокиран от реалните motor dimensions, printer fit calibration и физически fit tests. Виж `PROJECT_STATE.md` и `ASSEMBLY.md`.
 
 ## Resume / mobile-review entry points
 
@@ -11,7 +11,10 @@
 1. [`REPOSITORY_CONTRACT.md`](REPOSITORY_CONTRACT.md) — задължителното правило за continuity, integration, browser review и live BOM/assembly;
 2. [`DESIGN_PROTOCOL.md`](DESIGN_PROTOCOL.md) — общият алгоритъм за параметрично проектиране, QA и controlled backtracking;
 3. [`PROJECT_STATE.md`](PROJECT_STATE.md) — кратък текущ checkpoint за възстановяване на работата;
-4. [`ASSEMBLY.md`](ASSEMBLY.md) — текущ printable list, non-printed BOM и пълна последователност за физическо сглобяване.
+4. [`PARTS.md`](PARTS.md) — пълна декомпозиция, stable part IDs, dependency/status ledger;
+5. [`INTERFACES.md`](INTERFACES.md) — stable interface IDs, механични contracts и invalidation map;
+6. [`ASSEMBLY.md`](ASSEMBLY.md) — текущ printable list, non-printed BOM и пълна последователност за физическо сглобяване;
+7. [`src/config.scad`](src/config.scad) — общите размери, fits, hardware envelopes и datums.
 
 GitHub Pages browser validator публикува `src/` и позволява OpenSCAD WebAssembly render + интерактивен STL review от обикновен телефон/таблет. Browser publication е част от integration gate за нови части и subsystem assemblies.
 
@@ -51,11 +54,12 @@ external reduction = 20:1
 ```text
 SCAD
   → full CGAL STL render
-  → Simple: yes + watertight + one connected printable component
-  → ISO/top/bottom/front/right renders
-  → sections where useful
-  → assembly/collision QA
-  → ASSEMBLY.md update
+  → Simple: yes + watertight + expected connected components
+  → standard orthographic/isometric views
+  → adaptive X/Y/Z and critical-interface sections
+  → neighboring-part context QA
+  → assembly/motion/collision QA
+  → PARTS/INTERFACES/ASSEMBLY/PROJECT_STATE update as affected
 ```
 
 `tools/visual_qa.py` автоматизира individual-part QA. `src/assemblies/full_mount.scad` е текущият пълен виртуален assembly и поддържа command-line `ALT_ANGLE`, например:
@@ -69,13 +73,19 @@ ALT assembly е визуално проверен при `-20°`, `0°`, `45°` 
 ## Структура
 
 ```text
-src/config.scad                 общи параметри
+REPOSITORY_CONTRACT.md          persistent-memory / mobile workflow contract
+DESIGN_PROTOCOL.md              reusable parametric mechanical design method
+PROJECT_STATE.md                fresh-chat resume checkpoint
+PARTS.md                        decomposition + dependency/status ledger
+INTERFACES.md                   interface contracts + invalidation map
+ASSEMBLY.md                     live printable list, hardware BOM, assembly sequence
+src/config.scad                 shared parameters and datums
 src/lib/                        gears и reusable mechanical modules
-src/parts/                      отделни printable parts
+src/parts/                      elementary printable parts
 src/assemblies/                 subsystem и full-mount assemblies
 tools/visual_qa.py              headless mechanical visual QA
-ASSEMBLY.md                     hardware BOM + exact assembly sequence
 docs/visual-qa.md               QA policy
+site/                           mobile browser OpenSCAD WebAssembly validator
 ```
 
 ## Важни непечатни части
@@ -86,7 +96,7 @@ docs/visual-qa.md               QA policy
 - M3/M4 fasteners, M8 AZ stud, 1/4-20 tripod/payload hardware
 - PTFE glide pads за AZ
 
-Точните количества, началните screw lengths и редът на сглобяване са в **`ASSEMBLY.md`** — той е механичният source of truth.
+Точните количества, началните screw lengths и редът на сглобяване са в **`ASSEMBLY.md`**. Stable part IDs и текущият status са в **`PARTS.md`**; размерните/механичните contracts между тях са в **`INTERFACES.md`**.
 
 ## Преди production print
 
@@ -98,6 +108,8 @@ docs/visual-qa.md               QA policy
 4. captive-nut / M3 / M4 calibration;
 5. физически ALT output-hub/grub-screw test;
 6. окончателно решение за двустранната AZ compound axle support.
+
+След всяка физическа промяна използвай invalidation map-а в `INTERFACES.md`, за да определиш кои part IDs трябва да бъдат маркирани `NEEDS_REVALIDATION` и QA-нати отново.
 
 ## Лиценз
 
