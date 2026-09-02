@@ -1,21 +1,30 @@
 #!/usr/bin/env python3
-"""Automated sampled two-axis motion QA for the Alt-Az mount.
+"""Fast mesh-based two-axis motion QA.
 
-Dense ALT collision poses are batched into a few OpenSCAD CGAL runs. If a batch
-contains collision geometry, the script automatically falls back to per-pose
-checks to locate the failing angles. AZ clearance is covered by the current
-rotational-symmetry proof; actual assemblies are still compiled across the AZ
-and coupled AZ/ALT grids and representative poses are rendered for human review.
+OpenSCAD is used once per reusable diagnostic solid. Python-FCL then moves the
+payload mesh through the full ALT range without repeatedly invoking CGAL. This
+makes dense 1-degree collision/distance sampling practical in CI.
+
+AZ collision clearance for the current mechanical design is covered analytically:
+- payload and fixed upper structure rotate together as one rigid set;
+- the lower collision solid is deliberately a conservative rotationally symmetric
+  envelope that contains the actual base/cover/turntable/tabletop exterior.
+Therefore the ALT clearance result is invariant for every AZ angle in 0..360°.
+Asymmetric future cables/accessories must be added explicitly to the collision model.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
-import struct
 import subprocess
 from pathlib import Path
+
+import numpy as np
+import trimesh
+from trimesh.collision import CollisionManager
 
 
 def run(cmd: list[str], cwd: Path, timeout: int = 180) -> subprocess.CompletedProcess[str]:
@@ -24,104 +33,93 @@ def run(cmd: list[str], cwd: Path, timeout: int = 180) -> subprocess.CompletedPr
                           timeout=timeout)
 
 
-def stl_triangle_count(path: Path) -> int:
-    if not path.exists() or path.stat().st_size == 0:
-        return 0
-    data = path.read_bytes()
-    if len(data) >= 84:
-        n = struct.unpack("<I", data[80:84])[0]
-        if 84 + 50 * n == len(data):
-            return int(n)
-    text = data.decode("utf-8", errors="ignore")
-    return len(re.findall(r"^\s*facet\s+normal\b", text, flags=re.MULTILINE))
+def config_scalar(text: str, name: str) -> float:
+    match = re.search(rf"^\s*{re.escape(name)}\s*=\s*(-?[0-9]+(?:\.[0-9]+)?)\s*;",
+                      text, flags=re.MULTILINE)
+    if not match:
+        raise RuntimeError(f"Cannot read scalar {name} from src/config.scad")
+    return float(match.group(1))
 
 
-def classify_empty_stl(p: subprocess.CompletedProcess[str], out: Path) -> tuple[str, int, str]:
-    log = p.stdout
-    fatal = any(token in log for token in ("ERROR:", "Parser error", "Can't parse file"))
-    triangles = stl_triangle_count(out)
-    empty_reported = "Current top level object is empty" in log
-    if fatal:
-        status = "ERROR"
-    elif triangles > 0:
-        status = "COLLISION"
-    elif p.returncode == 0 or empty_reported:
-        status = "CLEAR"
-    else:
-        status = "ERROR"
-    return status, triangles, "\n".join(log.strip().splitlines()[-14:])
-
-
-def batch_collision(root: Path, outdir: Path, *, mode: int, margin: float, label: str) -> dict:
-    src = root / "src/assemblies/motion_collision_sweep.scad"
-    out = outdir / f"batch-{label}.stl"
-    out.unlink(missing_ok=True)
-    cmd = ["openscad", "--render", "-D", f"MODE={mode}",
-           "-D", f"MARGIN={margin}", "-o", str(out), str(src)]
-    try:
-        p = run(cmd, root, timeout=300)
-        status, triangles, log_tail = classify_empty_stl(p, out)
-        returncode = p.returncode
-    except subprocess.TimeoutExpired:
-        status, triangles, returncode = "TIMEOUT", 0, -1
-        log_tail = "OpenSCAD batch collision sweep exceeded 300 seconds"
-    if status != "COLLISION":
-        out.unlink(missing_ok=True)
-    return {"status": status, "mode": mode, "margin_mm": margin,
-            "triangles": triangles, "returncode": returncode,
-            "file": str(out.relative_to(root)) if out.exists() else None,
-            "log_tail": log_tail}
-
-
-def single_collision(root: Path, outdir: Path, *, alt: float, mode: int,
-                     margin: float, label: str) -> dict:
+def export_diag_mesh(root: Path, outdir: Path, *, mode: int, name: str,
+                     tabletop: bool = True, margin: float = 0.0) -> tuple[trimesh.Trimesh, dict]:
     src = root / "src/assemblies/motion_collision_check.scad"
-    out = outdir / f"collision-{label}.stl"
-    out.unlink(missing_ok=True)
-    cmd = ["openscad", "--render", "-D", "AZ_ANGLE=0",
-           "-D", f"ALT_ANGLE={alt}", "-D", f"CHECK_MODE={mode}",
-           "-D", "WITH_TABLETOP=true", "-D", f"CLEARANCE_MARGIN={margin}",
+    out = outdir / f"{name}.stl"
+    cmd = ["openscad", "--render", "--hardwarnings",
+           "-D", f"CHECK_MODE={mode}",
+           "-D", f"WITH_TABLETOP={'true' if tabletop else 'false'}",
+           "-D", f"CLEARANCE_MARGIN={margin}",
            "-o", str(out), str(src)]
-    try:
-        p = run(cmd, root, timeout=120)
-        status, triangles, log_tail = classify_empty_stl(p, out)
-        returncode = p.returncode
-    except subprocess.TimeoutExpired:
-        status, triangles, returncode = "TIMEOUT", 0, -1
-        log_tail = "OpenSCAD single collision check exceeded 120 seconds"
-    if status != "COLLISION":
-        out.unlink(missing_ok=True)
-    return {"status": status, "alt_deg": alt, "mode": mode,
-            "margin_mm": margin, "triangles": triangles,
-            "returncode": returncode, "log_tail": log_tail}
+    p = run(cmd, root, timeout=300)
+    if p.returncode != 0 or not out.exists() or out.stat().st_size == 0:
+        raise RuntimeError(f"Diagnostic mesh export failed for {name}:\n{p.stdout}")
+    mesh = trimesh.load_mesh(out, force="mesh", process=False)
+    if not isinstance(mesh, trimesh.Trimesh) or len(mesh.faces) == 0:
+        raise RuntimeError(f"Diagnostic mesh {name} is empty or invalid")
+    return mesh, {
+        "file": str(out.relative_to(root)),
+        "vertices": int(len(mesh.vertices)),
+        "faces": int(len(mesh.faces)),
+        "watertight": bool(mesh.is_watertight),
+        "bounds_mm": [float(x) for x in mesh.extents],
+        "openscad_log_tail": "\n".join(p.stdout.strip().splitlines()[-12:]),
+    }
 
 
-def compile_scad(root: Path, outdir: Path, *, src: Path, defines: list[str], label: str) -> dict:
-    out = outdir / f"compile-{label}.csg"
-    out.unlink(missing_ok=True)
-    cmd = ["openscad"]
-    for definition in defines:
-        cmd += ["-D", definition]
-    cmd += ["-o", str(out), str(src)]
-    try:
-        p = run(cmd, root, timeout=120)
-        log = p.stdout
-        fatal = p.returncode != 0 or any(
-            token in log for token in ("ERROR:", "Parser error", "Can't parse file", "Assertion")
-        )
-        status = "OK" if ((not fatal) and out.exists() and out.stat().st_size > 0) else "ERROR"
-        log_tail = "\n".join(log.strip().splitlines()[-12:])
-    except subprocess.TimeoutExpired:
-        status, log_tail = "TIMEOUT", "OpenSCAD CSG compile exceeded 120 seconds"
-    out.unlink(missing_ok=True)
-    return {"status": status, "log_tail": log_tail}
+def payload_transform(alt_deg: float, axis_z: float) -> np.ndarray:
+    # OpenSCAD order: translate([0,0,axis_z]) rotate([alt,0,0]) payload_local().
+    a = math.radians(alt_deg)
+    c, s = math.cos(a), math.sin(a)
+    matrix = np.eye(4)
+    matrix[:3, :3] = np.array([[1, 0, 0], [0, c, -s], [0, s, c]], dtype=float)
+    matrix[:3, 3] = [0.0, 0.0, axis_z]
+    return matrix
+
+
+def collision_sweep(payload: trimesh.Trimesh, fixed: trimesh.Trimesh,
+                    *, axis_z: float, alt_values: list[int], name: str) -> dict:
+    manager = CollisionManager()
+    manager.add_object(name, fixed)
+    samples = []
+    collisions = []
+    min_distance = math.inf
+    min_pose = None
+    for alt in alt_values:
+        transform = payload_transform(alt, axis_z)
+        hit = bool(manager.in_collision_single(payload, transform=transform))
+        distance = float(manager.min_distance_single(payload, transform=transform))
+        samples.append({"alt_deg": alt, "collision": hit, "distance_mm": distance})
+        if hit:
+            collisions.append(alt)
+        if distance < min_distance:
+            min_distance, min_pose = distance, alt
+    return {
+        "name": name,
+        "sample_count": len(samples),
+        "alt_min_deg": min(alt_values),
+        "alt_max_deg": max(alt_values),
+        "step_deg": alt_values[1] - alt_values[0] if len(alt_values) > 1 else None,
+        "collision_angles_deg": collisions,
+        "minimum_distance_mm": min_distance,
+        "minimum_distance_alt_deg": min_pose,
+        "status": "CLEAR" if not collisions else "COLLISION",
+        "samples": samples,
+    }
 
 
 def compile_pose(root: Path, outdir: Path, *, az: float, alt: float, label: str) -> dict:
-    result = compile_scad(
-        root, outdir, src=root / "src/assemblies/tabletop_full_mount.scad",
-        defines=[f"AZ_ANGLE={az}", f"ALT_ANGLE={alt}"], label=label)
-    return {**result, "az_deg": az, "alt_deg": alt}
+    src = root / "src/assemblies/tabletop_full_mount.scad"
+    out = outdir / f"compile-{label}.csg"
+    cmd = ["openscad", "-D", f"AZ_ANGLE={az}", "-D", f"ALT_ANGLE={alt}",
+           "-o", str(out), str(src)]
+    p = run(cmd, root, timeout=120)
+    fatal = p.returncode != 0 or any(
+        token in p.stdout for token in ("ERROR:", "Parser error", "Can't parse file", "Assertion")
+    )
+    ok = (not fatal) and out.exists() and out.stat().st_size > 0
+    out.unlink(missing_ok=True)
+    return {"az_deg": az, "alt_deg": alt, "status": "OK" if ok else "ERROR",
+            "log_tail": "\n".join(p.stdout.strip().splitlines()[-10:])}
 
 
 def render_pose(root: Path, outdir: Path, *, az: float, alt: float, name: str) -> dict:
@@ -132,129 +130,139 @@ def render_pose(root: Path, outdir: Path, *, az: float, alt: float, name: str) -
            "--camera=240,-260,190,0,0,80", "--view=edges",
            "-D", f"AZ_ANGLE={az}", "-D", f"ALT_ANGLE={alt}",
            "-o", str(out), str(src)]
-    try:
-        p = run(cmd, root, timeout=120)
-        status = "OK" if (p.returncode == 0 and out.exists() and out.stat().st_size > 0) else "ERROR"
-        log_tail = "\n".join(p.stdout.strip().splitlines()[-10:])
-    except subprocess.TimeoutExpired:
-        status, log_tail = "TIMEOUT", "OpenSCAD preview exceeded 120 seconds"
-    return {"name": name, "az_deg": az, "alt_deg": alt, "status": status,
+    p = run(cmd, root, timeout=120)
+    ok = p.returncode == 0 and out.exists() and out.stat().st_size > 0
+    return {"name": name, "az_deg": az, "alt_deg": alt,
+            "status": "OK" if ok else "ERROR",
             "file": str(out.relative_to(root)) if out.exists() else None,
-            "log_tail": log_tail}
-
-
-def inclusive_range(start: int, stop: int, step: int) -> list[int]:
-    values = list(range(start, stop + 1, step))
-    if values[-1] != stop:
-        values.append(stop)
-    return values
+            "log_tail": "\n".join(p.stdout.strip().splitlines()[-10:])}
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default="build/motion-qa")
     parser.add_argument("--clearance-margin", type=float, default=0.5)
+    parser.add_argument("--alt-step", type=int, default=1)
     args = parser.parse_args()
 
     root = Path.cwd().resolve()
     outdir = (root / args.out).resolve()
     outdir.mkdir(parents=True, exist_ok=True)
-    report: dict = {
+
+    config = (root / "src/config.scad").read_text(encoding="utf-8")
+    yoke_stage_z = (config_scalar(config, "AZ_BASE_PLATE_H") +
+                    config_scalar(config, "AZ_COVER_H") +
+                    config_scalar(config, "AZ_GLIDE_GAP") +
+                    config_scalar(config, "AZ_TURNTABLE_H"))
+    slot_floor = config_scalar(config, "YOKE_BRIDGE_H") - config_scalar(config, "YOKE_SLOT_DEPTH")
+    axis_z = yoke_stage_z + slot_floor + config_scalar(config, "YOKE_AXIS_Z")
+
+    payload, payload_meta = export_diag_mesh(root, outdir, mode=10, name="payload-collision-body")
+    upper, upper_meta = export_diag_mesh(root, outdir, mode=11, name="upper-obstructions")
+    lower, lower_meta = export_diag_mesh(root, outdir, mode=12, name="lower-conservative",
+                                         tabletop=True, margin=0.0)
+    lower_margin, lower_margin_meta = export_diag_mesh(
+        root, outdir, mode=12, name="lower-conservative-margin",
+        tabletop=True, margin=args.clearance_margin)
+
+    alt_values = list(range(-20, 91, args.alt_step))
+    upper_sweep = collision_sweep(payload, upper, axis_z=axis_z,
+                                  alt_values=alt_values, name="upper")
+    lower_sweep = collision_sweep(payload, lower, axis_z=axis_z,
+                                  alt_values=alt_values, name="lower")
+    lower_margin_sweep = collision_sweep(payload, lower_margin, axis_z=axis_z,
+                                         alt_values=alt_values,
+                                         name=f"lower-expanded-{args.clearance_margin}mm")
+
+    # Analytic invariant checks remain executable in OpenSCAD as a second implementation.
+    analytic_out = outdir / "analytic-clearance.csg"
+    analytic = run(["openscad", "-D", f"QA_MARGIN={args.clearance_margin}",
+                    "-o", str(analytic_out),
+                    str(root / "src/assemblies/motion_clearance_asserts.scad")], root)
+    analytic_ok = analytic.returncode == 0 and analytic_out.exists() and not any(
+        token in analytic.stdout for token in ("ERROR:", "Assertion", "Parser error"))
+    analytic_out.unlink(missing_ok=True)
+
+    # AZ and coupled configuration-space compile sampling exercises the actual full assembly.
+    pose_checks = []
+    for az in range(0, 361, 10):
+        pose_checks.append(compile_pose(root, outdir, az=az, alt=0,
+                                        label=f"az-{az:03d}-alt000"))
+    for az in [0,45,90,135,180,225,270,315]:
+        for alt in [-20,0,45,90]:
+            pose_checks.append(compile_pose(root, outdir, az=az, alt=alt,
+                                            label=f"grid-az{az:03d}-alt{alt:+04d}"))
+
+    review_poses = []
+    for az, alt in [(0,-20),(0,0),(0,45),(0,90),(90,-20),(90,90),
+                    (180,-20),(180,90),(270,-20),(270,90)]:
+        review_poses.append(render_pose(root, outdir, az=az, alt=alt,
+                                        name=f"tabletop-az{az:03d}-alt{alt:+04d}"))
+
+    failures = []
+    for sweep in (upper_sweep, lower_sweep, lower_margin_sweep):
+        if sweep["status"] != "CLEAR": failures.append(sweep)
+    if not analytic_ok:
+        failures.append({"analytic_clearance": "ERROR", "log": analytic.stdout[-2000:]})
+    failures += [x for x in pose_checks if x["status"] != "OK"]
+    failures += [x for x in review_poses if x["status"] != "OK"]
+
+    report = {
         "protocol": "MOTION_QA_PROTOCOL.md",
         "plan": "docs/motion-sweep-plan.md",
+        "axis_z_mm": axis_z,
         "symmetry_basis": (
-            "Upper obstruction geometry rotates rigidly with AZ. Lower collision geometry "
-            "is a conservative rotationally symmetric envelope, so ALT collision clearance "
-            "proved at AZ=0 applies to the full current AZ range."
+            "Upper structure and payload undergo the same rigid AZ rotation. The lower "
+            "diagnostic mesh is a conservative rotationally symmetric superset of the "
+            "actual lower exterior. Therefore collision distances depend on ALT only for "
+            "the current mechanical design."
         ),
-        "batch_collision_checks": [], "localized_failures": [],
-        "analytic_clearance": None, "pose_compile_checks": [], "review_poses": [],
+        "diagnostic_meshes": {
+            "payload": payload_meta, "upper": upper_meta,
+            "lower": lower_meta, "lower_margin": lower_margin_meta,
+        },
+        "upper_sweep": upper_sweep,
+        "lower_sweep": lower_sweep,
+        "lower_margin_sweep": lower_margin_sweep,
+        "analytic_clearance": {
+            "status": "OK" if analytic_ok else "ERROR",
+            "log_tail": "\n".join(analytic.stdout.strip().splitlines()[-12:]),
+        },
+        "pose_compile_checks": pose_checks,
+        "review_poses": review_poses,
     }
-    failures: list[dict] = []
-
-    # A. Three CGAL batches: upper ALT sweep, lower ALT sweep, expanded lower margin.
-    batches = [
-        (0, 0.0, "upper-alt-sweep"),
-        (1, 0.0, "lower-alt-sweep"),
-        (2, args.clearance_margin, "lower-critical-margin"),
-    ]
-    for mode, margin, label in batches:
-        result = batch_collision(root, outdir, mode=mode, margin=margin, label=label)
-        report["batch_collision_checks"].append(result)
-        if result["status"] != "CLEAR":
-            failures.append(result)
-            # Localize geometric collision batches, but do not explode time on infrastructure errors.
-            if result["status"] == "COLLISION":
-                alts = inclusive_range(-20, 90, 5) if mode in (0, 1) else [-20, 0, 45, 90]
-                single_mode = mode if mode in (0, 1) else 1
-                for alt in alts:
-                    local = single_collision(
-                        root, outdir, alt=alt, mode=single_mode,
-                        margin=margin if mode == 2 else 0.0,
-                        label=f"locate-{label}-alt{alt:+04d}")
-                    if local["status"] != "CLEAR":
-                        report["localized_failures"].append(local)
-
-    # B. Invariant 0.5 mm side/bridge assertions.
-    analytic = compile_scad(
-        root, outdir, src=root / "src/assemblies/motion_clearance_asserts.scad",
-        defines=[f"QA_MARGIN={args.clearance_margin}"], label="analytic-clearance")
-    report["analytic_clearance"] = analytic
-    if analytic["status"] != "OK":
-        failures.append(analytic)
-
-    # C. Full AZ sweep and coupled configuration grid compile the real assembly.
-    az_values = inclusive_range(0, 360, 10)
-    for az in az_values:
-        result = compile_pose(root, outdir, az=az, alt=0, label=f"az-{az:03d}-alt000")
-        report["pose_compile_checks"].append(result)
-        if result["status"] != "OK": failures.append(result)
-
-    coupled_az = [0, 45, 90, 135, 180, 225, 270, 315]
-    coupled_alt = [-20, 0, 45, 90]
-    for az in coupled_az:
-        for alt in coupled_alt:
-            result = compile_pose(root, outdir, az=az, alt=alt,
-                                  label=f"grid-az{az:03d}-alt{alt:+04d}")
-            report["pose_compile_checks"].append(result)
-            if result["status"] != "OK": failures.append(result)
-
-    # D. Representative actual renders for human review.
-    poses = [(0,-20),(0,0),(0,45),(0,90),(90,-20),(90,90),
-             (180,-20),(180,90),(270,-20),(270,90)]
-    for az, alt in poses:
-        result = render_pose(root, outdir, az=az, alt=alt,
-                             name=f"tabletop-az{az:03d}-alt{alt:+04d}")
-        report["review_poses"].append(result)
-        if result["status"] != "OK": failures.append(result)
-
     summary = {
-        "alt_collision_sample_count_per_exact_batch": len(inclusive_range(-20, 90, 5)),
-        "alt_collision_step_deg": 5,
-        "az_compile_sample_count": len(az_values),
-        "az_compile_step_deg": 10,
-        "coupled_grid_configurations": len(coupled_az) * len(coupled_alt),
+        "result": "PASS" if not failures else "FAIL",
+        "alt_step_deg": args.alt_step,
+        "alt_samples": len(alt_values),
+        "upper_min_distance_mm": upper_sweep["minimum_distance_mm"],
+        "upper_min_distance_alt_deg": upper_sweep["minimum_distance_alt_deg"],
+        "lower_min_distance_mm": lower_sweep["minimum_distance_mm"],
+        "lower_min_distance_alt_deg": lower_sweep["minimum_distance_alt_deg"],
+        "expanded_lower_min_distance_mm": lower_margin_sweep["minimum_distance_mm"],
+        "expanded_lower_min_distance_alt_deg": lower_margin_sweep["minimum_distance_alt_deg"],
         "clearance_margin_mm": args.clearance_margin,
-        "batch_collision_runs": len(report["batch_collision_checks"]),
-        "pose_compile_checks": len(report["pose_compile_checks"]),
-        "review_poses": len(report["review_poses"]),
-        "failures": len(failures), "result": "PASS" if not failures else "FAIL",
+        "az_compile_samples": 37,
+        "coupled_grid_configurations": 32,
+        "review_poses": len(review_poses),
+        "failures": len(failures),
     }
     report["summary"] = summary
     (outdir / "motion-qa.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
-    md = ["# Motion QA run", "", f"Result: **{summary['result']}**", "", "## Coverage", "",
-          "- ALT exact collision samples: -20°..90° every 5°, batched separately against upper and conservative lower/tabletop obstructions.",
-          f"- Lower critical safety-margin check: {summary['clearance_margin_mm']} mm expanded envelope at -20°/0°/45°/90°.",
-          "- Invariant side/bridge clearances: executable OpenSCAD assertions.",
-          "- AZ assembly compile sweep: 0°..360° every 10°, including wrap endpoint.",
-          f"- Coupled AZ/ALT grid: {summary['coupled_grid_configurations']} configurations.",
-          f"- Human-review PNGs: {summary['review_poses']}.", "", "## Symmetry basis", "",
-          report["symmetry_basis"], ""]
+    md = ["# Motion QA run", "", f"Result: **{summary['result']}**", "",
+          f"- ALT collision/distance sweep: -20°..90° every {args.alt_step}° ({len(alt_values)} samples).",
+          f"- Minimum payload→upper distance: {summary['upper_min_distance_mm']:.3f} mm at ALT {summary['upper_min_distance_alt_deg']}°.",
+          f"- Minimum payload→lower conservative-envelope distance: {summary['lower_min_distance_mm']:.3f} mm at ALT {summary['lower_min_distance_alt_deg']}°.",
+          f"- Expanded lower-envelope ({args.clearance_margin:.2f} mm) minimum distance: {summary['expanded_lower_min_distance_mm']:.3f} mm at ALT {summary['expanded_lower_min_distance_alt_deg']}°.",
+          "- AZ compile sweep: 0°..360° every 10°, including wrap endpoint.",
+          "- Coupled grid: 8 AZ positions × 4 ALT positions = 32 configurations.",
+          f"- Static human-review renders: {len(review_poses)}.", "",
+          "## AZ symmetry basis", "", report["symmetry_basis"], ""]
     if failures:
-        md += ["## Failures", ""] + [f"- `{item}`" for item in failures]
+        md += ["## Failures", "", f"Failure count: {len(failures)}. See motion-qa.json for details."]
     else:
-        md += ["No sampled collision or configured safety-clearance violation was detected.", "",
+        md += ["No collision was found in the sampled range and the configured lower safety-margin envelope remained clear.", "",
                "Physical cable routing, backlash, compliance, printer fit, torque and tabletop overturn stability remain separate verification gates."]
     (outdir / "SUMMARY.md").write_text("\n".join(md) + "\n", encoding="utf-8")
     print(json.dumps(summary, indent=2))
