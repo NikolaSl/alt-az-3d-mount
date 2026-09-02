@@ -19,7 +19,7 @@ Stable interface IDs are used so that a geometry change can be traced to the exa
 
 | ID | Side A | Side B | Contract | Primary parameter owner | CAD status | Physical status |
 |---|---|---|---|---|---|---|
-| `I-001` | tripod / support | `P-AZ-BASE` | 1/4-20 UNC captive tripod interface; base must restrain nut rotation and allow screw entry from below | `TRIPOD_*` | `CAD_VALIDATED` | `PHYSICAL_PENDING` |
+| `I-001` | tripod / support | `P-AZ-BASE` | 1/4-20 UNC captive support interface; base restrains nut rotation and accepts screw entry from below | `TRIPOD_*` | `CAD_VALIDATED` | `PHYSICAL_PENDING` |
 | `I-002` | `P-AZ-BASE` | `H-AZ-AXIS` / `P-AZ-TURNTABLE` | M8 central AZ axis; turntable rotates about common Z datum; axial clamp removes play without binding | `M8_CLEARANCE_D`, AZ datums | `CAD_VALIDATED` | `PHYSICAL_PENDING` |
 | `I-003` | `H-AZ-MOTOR` | `P-AZ-BASE` | 28BYJ-48 mounting envelope and shaft datum fixed in AZ base | `BYJ_*`, `REDUCER_MOTOR*` | `CAD_VALIDATED` | `PHYSICAL_PENDING` |
 | `I-004` | `H-AZ-MOTOR` | `P-AZ-PINION` | 12T pinion fits actual 28BYJ-48 Double-D shaft; torque transmitted without slip | `BYJ_SHAFT_*`, `AZ_MOTOR_PINION_*` | `CAD_VALIDATED` | `PHYSICAL_PENDING` |
@@ -46,6 +46,7 @@ Stable interface IDs are used so that a geometry change can be traced to the exa
 | `I-025` | `P-ALT-OUTPUT` / `P-ALT-SPACER` | `H-ALT-SHAFT` / `H-608-DRIVE` | Spacer bears only on 608 inner race; output hub clamps shaft with two M3 grub screws; no bearing preload/rubbing | `ALT_OUTPUT_*`, `ALT_OUTPUT_SPACER_*`, `AXIS_SHAFT_D` | `CAD_VALIDATED` | `VERIFY-ALT-DRIVE` |
 | `I-026` | `P-ALT-GUARD` | `P-ALT-PLATE` | Removable 4×M3 guard encloses gears, clears stack, supports compound axle, and preserves service access | `ALT_GUARD_*` | `CAD_VALIDATED` | `PHYSICAL_PENDING` |
 | `I-027` | `P-SHAFT-COLLAR` | `H-ALT-SHAFT` | Idler-side collar limits axial travel while leaving small endplay; M3 grub screw locks collar | shaft/collar local geometry | `CAD_VALIDATED` | `PHYSICAL_PENDING` |
+| `I-028` | `P-TABLETOP-BASE` / `H-TABLETOP-BOLT` / `H-TABLETOP-FEET` | `P-AZ-BASE` / flat support surface | Ø48 pedestal enters Ø49×1.5 locator; recessed 1/4-20 bolt clamps into shared captive nut; bolt must not intrude into M8 AZ hardware; compliant feet establish a wide non-slip support footprint | `TABLETOP_*`, `TRIPOD_*`, `AZ_PEDESTAL_*` | `CAD_VALIDATED` | `VERIFY-TABLETOP-STABILITY` |
 
 ## Critical contract details
 
@@ -74,6 +75,7 @@ A-AZ
 A-YOKE
 A-PAYLOAD
 A-FULL
+A-TABLETOP-FULL
 ```
 
 ### `I-015` — ALT bearing/shaft chain
@@ -107,6 +109,18 @@ Required stack order from yoke outward:
 
 The spacer OD must not load the bearing outer race. The output gear must not rub plate or guard. The hub must transmit torque without imposing axial preload on the bearing.
 
+### `I-028` — removable tabletop support
+
+Required invariants:
+
+- `P-TABLETOP-BASE` remains removable so `P-AZ-BASE` can still mount directly on a tripod.
+- The locator provides lateral registration; the 1/4-20 bolt supplies clamp preload.
+- The initial bolt recommendation is about 1/2 in under-head length, but the final length is selected by dry-fit; a longer bolt must not reach the M8 AZ-axis hardware inside the pedestal.
+- The Ø190 printed disk and four compliant feet provide a support footprint, but CAD geometry alone does not prove overturn stability for every 1 kg payload/ALT angle.
+- Physical stability is verified with the actual payload CG before unattended use.
+
+Changing `AZ_PEDESTAL_D`, `TRIPOD_*` or any `TABLETOP_*` geometry invalidates `P-TABLETOP-BASE`, `A-TABLETOP-CONTEXT` and `A-TABLETOP-FULL`.
+
 ## Motion contracts
 
 | Motion ID | Moving assembly | Fixed/reference assembly | Required range/checkpoints | Collision-sensitive interfaces |
@@ -124,13 +138,14 @@ This is the first machine-readable-by-convention propagation layer. When one par
 |---|---|
 | `BYJ_*` | `I-003`, `I-004`, `I-020`, `I-021`; then AZ/ALT gearbox context assemblies |
 | `GEAR_*`, `CD_STAGE*` | `I-005`–`I-008`, `I-022`–`I-026` |
-| `FIT`, `PRESS_FIT`, `ELEPHANT_FOOT` | all printed-to-hardware fits, especially `I-001`, `I-013`–`I-016`, `I-018`, `I-021`, `I-025`, `I-027` |
+| `FIT`, `PRESS_FIT`, `ELEPHANT_FOOT` | all printed-to-hardware fits, especially `I-001`, `I-013`–`I-016`, `I-018`, `I-021`, `I-025`, `I-027`, `I-028` |
 | `BEARING_608_*`, `AXIS_SHAFT_D`, `ALT_SHAFT_L` | `I-013`–`I-017`, `I-025`, `I-027`, plus `M-ALT` |
-| `AZ_*` | `I-002`–`I-010`, then all assemblies above AZ turntable |
+| `AZ_*` | `I-002`–`I-010`; `AZ_PEDESTAL_*` also invalidates `I-028`; then all assemblies above AZ turntable |
 | `YOKE_*` | `I-010`–`I-019`, `M-ALT`, payload/gearbox collision QA |
 | `PAYLOAD_*`, `SHAFT_CLAMP_*` | `I-016`–`I-018`, `M-ALT` |
 | `ALT_*` | `I-019`–`I-026`, `M-ALT` |
-| `TRIPOD_*` | `I-001`, `I-018` |
+| `TRIPOD_*` | `I-001`, `I-018`, `I-028` |
+| `TABLETOP_*` | `I-028`, `A-TABLETOP-CONTEXT`, `A-TABLETOP-FULL` |
 
 ## Backtracking procedure using interface IDs
 
