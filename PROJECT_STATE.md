@@ -4,7 +4,7 @@ This file is the short bootstrap index for resuming the project from a fresh cha
 
 ## Current phase
 
-**Core mechanical CAD is complete for both tripod and tabletop modes; physical fit calibration and functional dry-fit are now the production-print gate.**
+**Core mechanical CAD is complete for both tripod and tabletop modes and the structural two-axis motion QA gate has passed; physical fit calibration and functional dry-fit are now the production-print gate.**
 
 The current architecture is an Alt-Az mount for a balanced payload below 1 kg using two 28BYJ-48 stepper motors and an additional printable 20:1 reducer on each axis.
 
@@ -32,7 +32,9 @@ src/assemblies/alt_drive_stage.scad
 src/assemblies/tabletop_base_context.scad
 ```
 
-The full mount supports `ALT_ANGLE` for motion inspection. Existing documented visual QA sampled at least `-20°`, `0°`, `45°` and `90°`.
+The full assemblies support both `AZ_ANGLE` and `ALT_ANGLE` for configuration-space inspection.
+
+The accepted structural motion-QA checkpoint is documented in `docs/motion-qa-results.md`: ALT was collision/distance tested from `-20°` through `+90°` every `1°` (111 poses), AZ assembly compilation was tested from `0°` through `360°` every `10°`, and 32 coupled AZ/ALT configurations plus 10 representative renders passed. The smallest sampled payload-to-upper-structure clearance is **6.0 mm at ALT -20°**.
 
 ## Completed CAD/process subsystems
 
@@ -51,6 +53,9 @@ The full mount supports `ALT_ANGLE` for motion inspection. Existing documented v
 - ALT gearbox guard.
 - Full two-axis virtual assemblies for tripod and tabletop modes.
 - Repeatable per-part and assembly visual QA tooling.
+- Generic mandatory motion-QA protocol in `MOTION_QA_PROTOCOL.md`.
+- Automated OpenSCAD + trimesh/python-fcl motion QA in `tools/motion_qa.py` and `.github/workflows/motion-qa.yml`.
+- Dense structural motion QA PASS recorded in `docs/motion-qa-results.md`.
 - GitHub Pages browser validator using OpenSCAD WebAssembly + Three.js.
 - Live mechanical assembly guide and hardware BOM in `ASSEMBLY.md`.
 - Formal part decomposition and status ledger in `PARTS.md`.
@@ -67,17 +72,20 @@ Read in this order when resuming work:
 
 1. `REPOSITORY_CONTRACT.md`
 2. `DESIGN_PROTOCOL.md`
-3. this file
-4. `README.md`
-5. `PARTS.md` — elementary decomposition, stable part IDs, dependency/status ledger
-6. `INTERFACES.md` — stable interface IDs, contracts and change-propagation rules
-7. `ASSEMBLY.md` — current printable quantities, purchased BOM and physical assembly sequence
-8. `CALIBRATION.md` — measurement worksheet and physical fit procedure
-9. `src/config.scad` — shared numeric parameters and datums
-10. `docs/visual-qa.md`
-11. `docs/alt-drive-qa.md`
-12. `docs/calibration-qa.md`
-13. current relevant assembly and neighboring part sources
+3. `MOTION_QA_PROTOCOL.md`
+4. this file
+5. `README.md`
+6. `PARTS.md` — elementary decomposition, stable part IDs, dependency/status ledger
+7. `INTERFACES.md` — stable interface IDs, contracts and change-propagation rules
+8. `ASSEMBLY.md` — current printable quantities, purchased BOM and physical assembly sequence
+9. `CALIBRATION.md` — measurement worksheet and physical fit procedure
+10. `src/config.scad` — shared numeric parameters and datums
+11. `docs/visual-qa.md`
+12. `docs/motion-sweep-plan.md`
+13. `docs/motion-qa-results.md`
+14. `docs/alt-drive-qa.md`
+15. `docs/calibration-qa.md`
+16. current relevant assembly and neighboring part sources
 
 When changing geometry, use the stable part IDs from `PARTS.md` and interface IDs from `INTERFACES.md` in reasoning/commit notes where practical.
 
@@ -119,7 +127,11 @@ Primary contracts: `I-021`, `I-023`, `I-025`.
 
 ### VERIFY-TABLETOP-STABILITY
 
-The new Ø190 tabletop base is CAD-integrated through `I-028`, but stability depends on the actual payload CG, rubber feet and surface. Verify real overturn margin before unattended use at the project maximum load.
+The Ø190 tabletop base is CAD-integrated through `I-028`, but stability depends on the actual payload CG, rubber feet and surface. Verify real overturn margin before unattended use at the project maximum load.
+
+### VERIFY-FUTURE-ASYMMETRIC-MOTION-OBSTRUCTIONS
+
+The current AZ structural collision proof relies on rotational symmetry of the lower mechanical envelope and common rigid AZ rotation of the upper structure. Asymmetric future objects — especially cables, connectors, electronics carriers or hard stops — must be added to the motion collision model and must trigger re-run of `MOTION_QA_PROTOCOL.md`.
 
 ## Physical validation before production print
 
@@ -134,7 +146,8 @@ At minimum:
 - print/dry-fit the tabletop shared 1/4-20 interface if tabletop mode will be used;
 - print/dry-fit the AZ compound axle support and ALT output stack;
 - dry-fit the complete mechanical assembly before threadlocker/final fastener-length freeze;
-- verify balance and tabletop stability with the real payload.
+- verify balance and tabletop stability with the real payload;
+- re-run structural/motion QA after any changed physical-fit parameter that affects geometry or motion clearance.
 
 After a physical result changes a shared parameter, use `INTERFACES.md` to identify what is invalidated, mark affected entries in `PARTS.md`, re-run QA, then update `ASSEMBLY.md` and this checkpoint.
 
@@ -158,12 +171,12 @@ The mobile page links directly to current project state, parts ledger, interface
 
 ## What remains to finish the mechanical product
 
-The design is no longer blocked by missing major CAD parts. The remaining work is primarily verification and production hardening:
+The design is no longer blocked by missing major CAD parts or by unresolved structural motion collisions. The remaining work is primarily physical verification and production hardening:
 
 1. physical measurements and calibration coupons;
 2. propagation of measured values through shared parameters and affected interfaces;
 3. physical AZ axle and ALT drive-stack fit tests;
-4. complete dry-fit and motion/balance tests;
+4. complete dry-fit and real motion/balance tests;
 5. tabletop stability test if that mode is used;
 6. re-QA after any measured-parameter changes;
 7. freeze BOM/fastener lengths and generate the final production print set.
@@ -182,10 +195,10 @@ measure real hardware
 → print the 3 calibration coupons
 → report measurements + chosen fits
 → update config + mark invalidated interfaces/parts
-→ re-QA affected dependency chain
+→ re-QA affected dependency chain, including motion QA where envelopes changed
 → print functional AZ/ALT interface parts
 → dry-fit full mount
-→ balance + motion + tabletop stability tests
+→ balance + real motion + tabletop stability tests
 → freeze production BOM/print set
 ```
 
