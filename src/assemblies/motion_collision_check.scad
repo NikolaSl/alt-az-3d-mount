@@ -1,11 +1,18 @@
 // Diagnostic boolean assembly for automated motion QA.
 // Exporting this file should produce EMPTY geometry when the selected moving
 // payload envelope does not collide with the selected fixed obstruction set.
+//
+// This diagnostic deliberately uses external obstruction surfaces, not the
+// detailed internal gear tooth geometry. That makes dense motion sweeps fast
+// while remaining conservative for payload/structure collision detection.
 
 include <../config.scad>
-use <az_stage.scad>
 use <yoke_stage.scad>
-use <alt_drive_stage.scad>
+use <../parts/az_base.scad>
+use <../parts/az_gearbox_cover.scad>
+use <../parts/az_turntable.scad>
+use <../parts/alt_gearbox_plate.scad>
+use <../parts/alt_gearbox_guard.scad>
 use <../parts/tabletop_base_adapter.scad>
 use <../parts/payload_clamp_lower.scad>
 use <../parts/payload_clamp_upper.scad>
@@ -45,7 +52,7 @@ module payload_collision_body_local_with_margin() {
     if (CLEARANCE_MARGIN > 0)
         minkowski() {
             payload_collision_body_local();
-            sphere(r = CLEARANCE_MARGIN, $fn = 12);
+            sphere(r = CLEARANCE_MARGIN, $fn = 10);
         }
     else
         payload_collision_body_local();
@@ -58,19 +65,38 @@ module moving_payload_world() {
                 payload_collision_body_local_with_margin();
 }
 
+module alt_external_obstruction_local() {
+    alt_gearbox_plate();
+    translate([0, 0, ALT_PLATE_T]) alt_gearbox_guard();
+
+    // Conservative motor body/boss envelope behind the plate. Internal gears
+    // are enclosed by the guard and are therefore not needed as collision solids.
+    translate([ALT_MOTOR[0], ALT_MOTOR[1], 0])
+        rotate([0, 0, ALT_MOTOR_ROT]) {
+            translate([BYJ_BODY_CENTER_FROM_SHAFT[0],
+                       BYJ_BODY_CENTER_FROM_SHAFT[1],
+                       -BYJ_BODY_H])
+                cylinder(d = BYJ_BODY_D, h = BYJ_BODY_H);
+            translate([0, 0, -BYJ_FLANGE_T])
+                cylinder(d = BYJ_BOSS_D,
+                         h = BYJ_BOSS_H + BYJ_FLANGE_T);
+        }
+}
+
 module fixed_upper_obstructions() {
     rotate([0, 0, AZ_ANGLE]) {
         translate([0, 0, YOKE_STAGE_Z_QA]) yoke_stage();
-        alt_drive_to_world_qa(ALT_AXIS_Z_QA)
-            alt_drive_stage(show_guard = true,
-                            show_arm = false,
-                            show_motor = true,
-                            show_shaft = false);
+        alt_drive_to_world_qa(ALT_AXIS_Z_QA) alt_external_obstruction_local();
     }
 }
 
 module fixed_lower_obstructions() {
-    az_stage();
+    az_base();
+    translate([0, 0, AZ_BASE_PLATE_H])
+        az_gearbox_cover();
+    translate([0, 0, AZ_BASE_PLATE_H + AZ_COVER_H + AZ_GLIDE_GAP])
+        az_turntable();
+
     if (WITH_TABLETOP)
         translate([0, 0,
                    -AZ_PEDESTAL_H - TABLETOP_BASE_T + TABLETOP_LOCATOR_DEPTH])
