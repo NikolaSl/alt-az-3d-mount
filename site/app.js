@@ -161,11 +161,7 @@ async function showSelectedSource() {
   progressElapsed.textContent = '0:00';
 
   const dependencyCount = filesForEntry(entry).length;
-  setStatus(`Selected ${entry.path}. Source verified; ${dependencyCount} required SCAD file(s) in dependency closure.`);
-
-  if (entry.prebuilt) {
-    await loadPublishedStl(entry, serial);
-  }
+  setStatus(`Selected ${entry.path}. Source verified; ${dependencyCount} required SCAD file(s). Press “Render in browser”.`);
 }
 
 async function loadViewerModules() {
@@ -290,32 +286,7 @@ function displayStl(bytes) {
   grid.position.z = -originalSize.z / 2;
 
   const triangles = geometry.attributes.position.count / 3;
-  meshInfo.textContent = `${originalSize.x.toFixed(1)} × ${originalSize.y.toFixed(1)} × ${originalSize.z.toFixed(1)} mm · ${Math.round(triangles).toLocaleString()} triangles`;
-}
-
-async function loadPublishedStl(entry, serial = selectionSerial) {
-  if (!entry.prebuilt) return false;
-  try {
-    setStatus(`Loading published STL for ${entry.path}…`);
-    const url = new URL(`./prebuilt/${entry.prebuilt}`, import.meta.url);
-    const response = await fetch(url, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const buffer = await response.arrayBuffer();
-    if (serial !== selectionSerial || entry.path !== modelSelect.value) return false;
-
-    generatedStl = new Uint8Array(buffer);
-    if (!generatedStl.length) throw new Error('published STL is empty');
-    downloadButton.disabled = false;
-    await initViewer();
-    displayStl(generatedStl);
-    meshInfo.textContent += ' · published CI render';
-    setStatus(`Published render loaded instantly from commit ${manifest.commit.slice(0, 8)}. Use “Re-render in browser” only when you need an independent WebAssembly compile.`);
-    return true;
-  } catch (error) {
-    log(`Published STL unavailable for ${entry.path}: ${error.message}`, true);
-    setStatus(`Published preview unavailable; use “Re-render in browser”. (${error.message})`);
-    return false;
-  }
+  meshInfo.textContent = `${originalSize.x.toFixed(1)} × ${originalSize.y.toFixed(1)} × ${originalSize.z.toFixed(1)} mm · ${Math.round(triangles).toLocaleString()} triangles · browser WASM render`;
 }
 
 function finishWorker() {
@@ -405,9 +376,8 @@ async function renderSelected() {
       try {
         await initViewer();
         displayStl(generatedStl);
-        meshInfo.textContent += ' · browser WASM render';
         setProgress({ phase: 'done', progress: 100, detail: `Completed in ${formatElapsed(elapsed)}.` });
-        setStatus(`Rendered ${entry.path} in a background worker in ${formatElapsed(elapsed)}. Page remained responsive.`);
+        setStatus(`Rendered ${entry.path} in a background worker in ${formatElapsed(elapsed)}.`);
       } catch (viewerError) {
         log(`3D display unavailable: ${viewerError.message}`, true);
         meshInfo.textContent = `${generatedStl.length.toLocaleString()} STL bytes generated`;
@@ -453,7 +423,7 @@ async function init() {
   for (const entry of manifest.entries) {
     const option = document.createElement('option');
     option.value = entry.path;
-    option.textContent = `${entry.prebuilt ? '● ' : ''}${entry.label || entry.path}`;
+    option.textContent = entry.label || entry.path;
     modelSelect.appendChild(option);
   }
 
@@ -473,9 +443,7 @@ async function init() {
 
   try {
     await initViewer();
-    if (!generatedStl) {
-      setStatus(`Ready. ${manifest.entries.length} renderable SCAD file(s) from commit ${manifest.commit.slice(0, 8)}.`);
-    }
+    setStatus(`Ready. ${manifest.entries.length} renderable SCAD file(s) from commit ${manifest.commit.slice(0, 8)}.`);
   } catch (error) {
     log(`3D viewer initialization failed: ${error?.stack || error}`, true);
     setStatus(`Source loaded. 3D viewer unavailable: ${error?.message || error}`);
