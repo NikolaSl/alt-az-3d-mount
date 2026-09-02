@@ -19,7 +19,7 @@ The repository must contain, as applicable:
 - dependency/build order;
 - part status and current project checkpoint;
 - OpenSCAD source for parts and assemblies;
-- repeatable QA tooling and QA policy;
+- repeatable visual/geometric/motion QA tooling, policies and accepted QA checkpoints;
 - unresolved assumptions, HOLD/VERIFY items and reasons;
 - design decisions that affect downstream geometry;
 - live printable-part list;
@@ -38,15 +38,19 @@ Recommended bootstrap order:
 
 1. `REPOSITORY_CONTRACT.md` — how the project must be maintained.
 2. `DESIGN_PROTOCOL.md` — generic parametric mechanical-design algorithm.
-3. `PROJECT_STATE.md` — current checkpoint, trusted geometry, blockers and next steps.
-4. `README.md` — project purpose and high-level architecture.
-5. `ASSEMBLY.md` — current printable parts, BOM and physical assembly sequence.
-6. `src/config.scad` — current shared parameter system and datums.
-7. QA documents/scripts under `docs/` and `tools/`.
-8. Relevant current partial/full assemblies under `src/assemblies/`.
-9. The exact neighboring part sources involved in the next task.
+3. `MOTION_QA_PROTOCOL.md` — mandatory full-range QA rules for mechanisms with moving parts.
+4. `PROJECT_STATE.md` — current checkpoint, trusted geometry, blockers and next steps.
+5. `README.md` — project purpose and high-level architecture.
+6. `PARTS.md` — decomposition, stable IDs, dependency/status ledger.
+7. `INTERFACES.md` — interface and motion contracts, invalidation map.
+8. `ASSEMBLY.md` — current printable parts, BOM and physical assembly sequence.
+9. `CALIBRATION.md` where present — physical measurement/fit state.
+10. `src/config.scad` — current shared parameter system and datums.
+11. QA documents/scripts under `docs/` and `tools/`, including the latest accepted result checkpoint such as `docs/motion-qa-results.md`.
+12. Relevant current partial/full assemblies under `src/assemblies/`.
+13. The exact neighboring part sources involved in the next task.
 
-If `PARTS.md`, `INTERFACES.md`, `REQUIREMENTS.md` or machine-readable state files are introduced later, they become part of this bootstrap set.
+If `REQUIREMENTS.md` or machine-readable state files are introduced later, they become part of this bootstrap set.
 
 Do not infer the current design state from chat snippets when the repository can answer it.
 
@@ -62,15 +66,18 @@ part source
   + per-part QA
   + neighboring/context QA
   + current partial/full assembly integration
-  + assembly/motion QA where relevant
+  + full-range motion QA where the motion envelope is affected
   + ASSEMBLY.md update
   + printable-parts/BOM update
+  + PARTS/INTERFACES motion-status/invalidation update
   + project-state / HOLD / decision update
   + browser publication/reviewability
   = accepted design step
 ```
 
 These items should normally land together in the same coherent commit or in a short, explicitly linked commit sequence. If one is missing, the part remains provisional.
+
+For a mechanism with moving parts, four attractive static poses are not a substitute for motion QA. Endpoints, intermediate states, critical clearances, and relevant coupled-axis configurations are part of the acceptance transaction as defined in `MOTION_QA_PROTOCOL.md`.
 
 ## 4. Browser publication is part of integration
 
@@ -84,7 +91,8 @@ For this repository, GitHub Pages is the mobile human-in-the-loop review surface
 - loads OpenSCAD WebAssembly in the browser;
 - renders the selected SCAD to STL locally in the browser;
 - displays the generated STL with an interactive Three.js viewer;
-- exposes the exact source/commit used for the render.
+- exposes the exact source/commit used for the render;
+- links the persistent project state, assembly/BOM, calibration and QA-result documents.
 
 Every new printable part and useful subsystem/full assembly must therefore have an appropriate OpenSCAD entry point under the published source tree so that it is selectable and renderable from the browser.
 
@@ -112,11 +120,11 @@ AI reads and modifies GitHub repository
         ↓
 repository preserves all engineering state
         ↓
-GitHub Actions publishes current OpenSCAD sources
+GitHub Actions executes QA and publishes current OpenSCAD sources
         ↓
 ordinary mobile browser runs OpenSCAD WebAssembly
         ↓
-human inspects part/subsystem/full assembly
+human inspects part/subsystem/full assembly + QA state
         ↓
 feedback returns through chat
 ```
@@ -143,6 +151,7 @@ For every relevant part/subassembly, `ASSEMBLY.md` should preserve:
 - lubrication/threadlocker/adhesive notes where applicable;
 - fit/calibration coupon or physical verification required before final assembly;
 - motion/free-play checks after the step;
+- full-range physical motion checks for moving mechanisms;
 - later disassembly/service constraints when relevant.
 
 The guide must describe how to physically build the **best-known machine at the current design checkpoint**, not only the eventual final concept.
@@ -176,9 +185,10 @@ A geometrically valid part is not acceptable if, in the intended sequence:
 - two parts require impossible mutual insertion;
 - a tool cannot reach the fastener;
 - a component becomes trapped before a required later component is installed;
-- a service part cannot be removed without destructive disassembly when serviceability is required.
+- a service part cannot be removed without destructive disassembly when serviceability is required;
+- a moving part is only collision-free in its neutral pose but fails elsewhere in its intended range.
 
-During context QA, reason not only about the final assembled geometry but also about the intermediate assembly states described by `ASSEMBLY.md`.
+During context QA, reason not only about the final assembled geometry but also about the intermediate assembly states described by `ASSEMBLY.md` and the complete motion space described by `MOTION_QA_PROTOCOL.md`.
 
 ## 9. Current-state file
 
@@ -189,6 +199,7 @@ It should state at minimum:
 - current project phase;
 - current trusted/full assembly entry point;
 - major completed subsystems;
+- current accepted motion-QA checkpoint where moving mechanisms exist;
 - provisional or physically unverified interfaces;
 - HOLD/BLOCKED items;
 - next recommended design or validation step;
@@ -205,6 +216,7 @@ A review checkpoint should make available:
 - current full or subsystem assembly;
 - the newly changed part;
 - useful cutaway/section/context views from QA;
+- motion-QA summary and representative poses when motion is involved;
 - key changed parameters/interfaces;
 - current `PROJECT_STATE.md`;
 - current `ASSEMBLY.md` and BOM;
@@ -220,12 +232,13 @@ A step is complete only when another session can:
 1. clone/read the repository;
 2. understand why the part exists and what it interfaces with;
 3. regenerate its geometry from source and common parameters;
-4. reproduce the relevant QA;
-5. place it in the current assembly;
-6. see it in the browser-published project;
-7. identify what non-printed items are required;
-8. follow `ASSEMBLY.md` to physically integrate it;
-9. know remaining risks/HOLD items;
-10. continue the next dependency without recovering lost context from chat.
+4. reproduce the relevant visual/geometric QA;
+5. reproduce the relevant full-range motion QA when moving geometry is involved;
+6. place it in the current assembly;
+7. see it in the browser-published project;
+8. identify what non-printed items are required;
+9. follow `ASSEMBLY.md` to physically integrate it and test its intended motion;
+10. know remaining risks/HOLD items;
+11. continue the next dependency without recovering lost context from chat.
 
 This rule is intentionally stricter than “the CAD compiles”. It is what makes the project durable across chats, devices and contributors.
