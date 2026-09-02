@@ -14,6 +14,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: mechanical-motion-qa
+  cancel-in-progress: true
+
 jobs:
   motion-qa:
     runs-on: ubuntu-latest
