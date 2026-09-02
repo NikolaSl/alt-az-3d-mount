@@ -2,18 +2,15 @@
 // Exporting this file should produce EMPTY geometry when the selected moving
 // payload envelope does not collide with the selected fixed obstruction set.
 //
-// This diagnostic deliberately uses external obstruction surfaces, not the
-// detailed internal gear tooth geometry. That makes dense motion sweeps fast
-// while remaining conservative for payload/structure collision detection.
+// The diagnostic uses conservative external obstruction envelopes rather than
+// internal gear tooth geometry. The lower AZ/tabletop envelope is deliberately
+// rotationally symmetric and at least as large as the real exterior solids, so
+// clearance proven against it at one AZ angle applies to the full 0..360° sweep.
 
 include <../config.scad>
 use <yoke_stage.scad>
-use <../parts/az_base.scad>
-use <../parts/az_gearbox_cover.scad>
-use <../parts/az_turntable.scad>
 use <../parts/alt_gearbox_plate.scad>
 use <../parts/alt_gearbox_guard.scad>
-use <../parts/tabletop_base_adapter.scad>
 use <../parts/payload_clamp_lower.scad>
 use <../parts/payload_clamp_upper.scad>
 use <../parts/payload_plate.scad>
@@ -90,17 +87,21 @@ module fixed_upper_obstructions() {
     }
 }
 
-module fixed_lower_obstructions() {
-    az_base();
+module conservative_lower_obstructions() {
+    // Full solid envelopes intentionally fill openings and cable cut-outs.
+    // A payload that clears these solids clears the actual lower assembly.
+    cylinder(d = AZ_BASE_D, h = AZ_BASE_PLATE_H);
+    translate([0, 0, -AZ_PEDESTAL_H])
+        cylinder(d = AZ_PEDESTAL_D, h = AZ_PEDESTAL_H);
     translate([0, 0, AZ_BASE_PLATE_H])
-        az_gearbox_cover();
+        cylinder(d = AZ_BASE_D, h = AZ_COVER_H + AZ_GLIDE_GAP);
     translate([0, 0, AZ_BASE_PLATE_H + AZ_COVER_H + AZ_GLIDE_GAP])
-        az_turntable();
+        cylinder(d = AZ_TURNTABLE_D, h = AZ_TURNTABLE_H);
 
     if (WITH_TABLETOP)
         translate([0, 0,
                    -AZ_PEDESTAL_H - TABLETOP_BASE_T + TABLETOP_LOCATOR_DEPTH])
-            tabletop_base_adapter();
+            cylinder(d = TABLETOP_BASE_D, h = TABLETOP_BASE_T);
 }
 
 if (CHECK_MODE == 0)
@@ -111,7 +112,7 @@ if (CHECK_MODE == 0)
 else if (CHECK_MODE == 1)
     intersection() {
         moving_payload_world();
-        fixed_lower_obstructions();
+        conservative_lower_obstructions();
     }
 else
     assert(false, "Unknown CHECK_MODE; expected 0 (upper) or 1 (lower)");
