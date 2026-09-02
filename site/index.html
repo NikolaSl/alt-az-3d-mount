@@ -21,6 +21,7 @@
     <a class="button-link" href="https://github.com/NikolaSl/alt-az-3d-mount/blob/main/PARTS.md" target="_blank" rel="noreferrer">Parts + status ledger</a>
     <a class="button-link" href="https://github.com/NikolaSl/alt-az-3d-mount/blob/main/INTERFACES.md" target="_blank" rel="noreferrer">Interface contracts</a>
     <a class="button-link" href="https://github.com/NikolaSl/alt-az-3d-mount/blob/main/ASSEMBLY.md" target="_blank" rel="noreferrer">Assembly + live BOM</a>
+    <a class="button-link" href="https://github.com/NikolaSl/alt-az-3d-mount/blob/main/CALIBRATION.md" target="_blank" rel="noreferrer">Calibration + measurements</a>
     <a class="button-link" href="https://github.com/NikolaSl/alt-az-3d-mount/blob/main/REPOSITORY_CONTRACT.md" target="_blank" rel="noreferrer">Repository / mobile workflow</a>
     <a class="button-link" href="https://github.com/NikolaSl/alt-az-3d-mount/blob/main/DESIGN_PROTOCOL.md" target="_blank" rel="noreferrer">Parametric design protocol</a>
   </section>
@@ -61,11 +62,10 @@
   </details>
 
   <footer>
-    The source snapshot and the OpenSCAD WebAssembly runtime are served from this GitHub Pages deployment. Rendering happens locally in the browser; no CAD server is required. Project state, part/interface ledgers, assembly/BOM and workflow documents remain the persistent engineering memory across chats and devices.
+    The source snapshot and the OpenSCAD WebAssembly runtime are served from this GitHub Pages deployment. Rendering happens locally in the browser; no CAD server is required. Project state, part/interface ledgers, assembly/BOM, calibration and workflow documents remain the persistent engineering memory across chats and devices.
   </footer>
 
   <script>
-    // Keep failures visible even when an ES module itself cannot start.
     window.addEventListener("error", event => {
       const status = document.querySelector("#status");
       const log = document.querySelector("#consoleLog");
@@ -83,9 +83,6 @@
   </script>
 
   <script type="module">
-    // Load app.js using the deployed commit as a cache key. This is important
-    // on Android where an older ES module and its dependencies may remain in
-    // the browser cache even after the GitHub Pages deployment changes.
     try {
       const manifestUrl = new URL(`./scad-manifest.json?bootstrap=${Date.now()}`, window.location.href);
       const response = await fetch(manifestUrl, { cache: "no-store" });
