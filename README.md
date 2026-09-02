@@ -11,15 +11,16 @@
 1. [`REPOSITORY_CONTRACT.md`](REPOSITORY_CONTRACT.md) — задължителното правило за continuity, integration, browser review и live BOM/assembly;
 2. [`DESIGN_PROTOCOL.md`](DESIGN_PROTOCOL.md) — общият алгоритъм за параметрично проектиране, QA и controlled backtracking;
 3. [`MOTION_QA_PROTOCOL.md`](MOTION_QA_PROTOCOL.md) — задължителният full-range QA protocol за механизми с движещи се части;
-4. [`PROJECT_STATE.md`](PROJECT_STATE.md) — кратък текущ checkpoint за възстановяване на работата;
-5. [`PARTS.md`](PARTS.md) — пълна декомпозиция, stable part IDs, dependency/status ledger;
-6. [`INTERFACES.md`](INTERFACES.md) — stable interface IDs, механични contracts и invalidation map;
-7. [`ASSEMBLY.md`](ASSEMBLY.md) — текущ printable list, non-printed BOM и пълна последователност за физическо сглобяване;
-8. [`CALIBRATION.md`](CALIBRATION.md) — измервания и physical-fit процедура;
-9. [`docs/motion-qa-results.md`](docs/motion-qa-results.md) — последният приет motion-QA checkpoint;
-10. [`src/config.scad`](src/config.scad) — общите размери, fits, hardware envelopes и datums.
+4. [`BROWSER_REVIEW_PROTOCOL.md`](BROWSER_REVIEW_PROTOCOL.md) — reusable mobile/browser CAD review architecture: prebuilt assembly previews + non-blocking worker re-render;
+5. [`PROJECT_STATE.md`](PROJECT_STATE.md) — кратък текущ checkpoint за възстановяване на работата;
+6. [`PARTS.md`](PARTS.md) — пълна декомпозиция, stable part IDs, dependency/status ledger;
+7. [`INTERFACES.md`](INTERFACES.md) — stable interface IDs, механични contracts и invalidation map;
+8. [`ASSEMBLY.md`](ASSEMBLY.md) — текущ printable list, non-printed BOM и пълна последователност за физическо сглобяване;
+9. [`CALIBRATION.md`](CALIBRATION.md) — измервания и physical-fit процедура;
+10. [`docs/motion-qa-results.md`](docs/motion-qa-results.md) — последният приет motion-QA checkpoint;
+11. [`src/config.scad`](src/config.scad) — общите размери, fits, hardware envelopes и datums.
 
-GitHub Pages browser validator публикува `src/` и позволява OpenSCAD WebAssembly render + интерактивен STL review от обикновен телефон/таблет. Browser publication е част от integration gate за нови части и subsystem assemblies.
+GitHub Pages browser validator е mobile-first review surface. Скъпите assembly модели се prebuild-ват в GitHub Actions от точния deployed commit и се зареждат като готов STL за бърз преглед. При нужда **Re-render in browser** изпълнява независим OpenSCAD WebAssembly compile в background Web Worker с Manifold backend; страницата остава responsive, показва phase + elapsed time + diagnostics и има Cancel. Manifest-ът монтира само recursive dependency closure на избрания SCAD, така че добавянето на несвързани файлове не забавя всеки render.
 
 ## Основна конструкция
 
@@ -101,6 +102,7 @@ result: PASS
 REPOSITORY_CONTRACT.md          persistent-memory / mobile workflow contract
 DESIGN_PROTOCOL.md              reusable parametric mechanical design method
 MOTION_QA_PROTOCOL.md           reusable full-range moving-mechanism QA method
+BROWSER_REVIEW_PROTOCOL.md      reusable responsive browser/mobile CAD review method
 PROJECT_STATE.md                fresh-chat resume checkpoint
 PARTS.md                        decomposition + dependency/status ledger
 INTERFACES.md                   interface contracts + invalidation map
@@ -113,10 +115,13 @@ src/assemblies/                 subsystem, full-mount and QA diagnostic assembli
 src/calibration/                calibration coupons
 tools/visual_qa.py              headless mechanical visual QA
 tools/motion_qa.py              sampled mesh collision/distance motion QA
+tools/build_browser_manifest.py dependency-aware browser source manifest
+tools/prebuild_browser_previews.py CI preview builder for expensive assemblies
 docs/visual-qa.md               visual QA policy
 docs/motion-sweep-plan.md       project-specific movement coverage plan
 docs/motion-qa-results.md       accepted motion-QA checkpoint evidence
-site/                           mobile browser OpenSCAD WebAssembly validator
+site/openscad-worker.js         non-blocking browser OpenSCAD renderer
+site/                           mobile browser viewer and exact source snapshot
 ```
 
 ## Важни непечатни части
