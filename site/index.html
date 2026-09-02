@@ -11,7 +11,7 @@
   <header>
     <div>
       <h1>Alt-Az 3D Mount</h1>
-      <p>Repository OpenSCAD → published STL / background WebAssembly validator</p>
+      <p>Repository OpenSCAD → background WebAssembly → STL validator</p>
     </div>
     <a id="repoLink" class="repo-link" href="https://github.com/NikolaSl/alt-az-3d-mount" target="_blank" rel="noreferrer">GitHub repository</a>
   </header>
@@ -24,6 +24,7 @@
     <a class="button-link" href="https://github.com/NikolaSl/alt-az-3d-mount/blob/main/ASSEMBLY.md" target="_blank" rel="noreferrer">Assembly + live BOM</a>
     <a class="button-link" href="https://github.com/NikolaSl/alt-az-3d-mount/blob/main/CALIBRATION.md" target="_blank" rel="noreferrer">Calibration + measurements</a>
     <a class="button-link" href="https://github.com/NikolaSl/alt-az-3d-mount/blob/main/MOTION_QA_PROTOCOL.md" target="_blank" rel="noreferrer">Motion QA protocol</a>
+    <a class="button-link" href="https://github.com/NikolaSl/alt-az-3d-mount/blob/main/BROWSER_REVIEW_PROTOCOL.md" target="_blank" rel="noreferrer">Browser review protocol</a>
     <a class="button-link" href="https://github.com/NikolaSl/alt-az-3d-mount/blob/main/REPOSITORY_CONTRACT.md" target="_blank" rel="noreferrer">Repository / mobile workflow</a>
     <a class="button-link" href="https://github.com/NikolaSl/alt-az-3d-mount/blob/main/DESIGN_PROTOCOL.md" target="_blank" rel="noreferrer">Parametric design protocol</a>
   </section>
@@ -33,7 +34,7 @@
       SCAD entry point
       <select id="modelSelect"></select>
     </label>
-    <button id="renderButton" type="button">Re-render in browser</button>
+    <button id="renderButton" type="button">Render in browser</button>
     <button id="cancelButton" type="button" disabled>Cancel render</button>
     <button id="downloadButton" type="button" disabled>Download displayed STL</button>
     <a id="sourceLink" class="button-link" href="#" target="_blank" rel="noreferrer">Source at this commit</a>
@@ -75,7 +76,7 @@
   </details>
 
   <footer>
-    Published STL previews are built by GitHub Actions from the exact repository commit and load without running CAD on the phone. “Re-render in browser” performs an independent OpenSCAD WebAssembly compile in a Web Worker, so complex geometry no longer blocks the page UI. Project state, part/interface/motion contracts, assembly/BOM, calibration and accepted QA results remain the persistent engineering memory across chats and devices.
+    Every model is regenerated directly in the browser from the deployed repository source snapshot. OpenSCAD WebAssembly runs in a background Web Worker with the Manifold backend, so geometry computation does not block the page UI. Dependency-aware source loading, elapsed-time progress, diagnostics and Cancel remain available for large models. Project state, part/interface/motion contracts, assembly/BOM, calibration and accepted QA results remain the persistent engineering memory across chats and devices.
   </footer>
 
   <script>
