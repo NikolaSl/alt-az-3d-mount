@@ -34,6 +34,9 @@ moving mechanisms, views with covers removed so shaft/gear relationships remain 
 Any assembly containing one or more moving degrees of freedom must also follow
 [`MOTION_QA_PROTOCOL.md`](../MOTION_QA_PROTOCOL.md).
 
+For this mount, the current concrete two-axis sweep and coupled-pose plan is
+[`docs/motion-sweep-plan.md`](motion-sweep-plan.md).
+
 A few named poses are not sufficient. The QA gate must cover the **complete allowed motion
 range** with a repeatable sampled sweep, while explicitly checking both end limits, neutral
 or reference pose, known worst-case configurations, closest-clearance positions and any
