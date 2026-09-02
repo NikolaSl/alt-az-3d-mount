@@ -29,6 +29,35 @@ python3 tools/visual_qa.py src/assemblies/az_yoke_payload.scad --preview-only
 Assembly QA is supplemented by executable OpenSCAD `assert()` clearance checks and, for
 moving mechanisms, views with covers removed so shaft/gear relationships remain visible.
 
+## Mandatory motion QA for moving mechanisms
+
+Any assembly containing one or more moving degrees of freedom must also follow
+[`MOTION_QA_PROTOCOL.md`](../MOTION_QA_PROTOCOL.md).
+
+A few named poses are not sufficient. The QA gate must cover the **complete allowed motion
+range** with a repeatable sampled sweep, while explicitly checking both end limits, neutral
+or reference pose, known worst-case configurations, closest-clearance positions and any
+coupled multi-axis combinations that can create a conflict.
+
+For every sampled configuration inspect or programmatically verify, as applicable:
+
+- moving-to-fixed and moving-to-moving collisions;
+- required minimum clearance;
+- payload/counterweight swept envelope;
+- gear, shaft and bearing relationships;
+- guard/cover clearance;
+- cable/hose bend, twist and extension;
+- hard-stop/overtravel behavior;
+- interface-specific invariants.
+
+Sampling must be adaptive: use a finer step near small clearances or complicated geometry.
+Where practical, swept-volume analysis should supplement pose sampling so a narrow
+intermediate conflict is not missed between two samples.
+
+If a geometry, axis, motion limit, payload envelope or neighboring clearance changes, the
+relevant motion QA is invalidated and the **whole affected sweep must be repeated**, not
+only the pose where the earlier problem was found.
+
 Outputs are written under `build/qa/<part>/` and include the STL and sections in full mode,
 PNG views in both modes, `qa.json`, and `contact-sheet.png`.
 
