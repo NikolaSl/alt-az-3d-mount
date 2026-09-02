@@ -26,16 +26,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Install OpenSCAD runtime
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install motion QA runtime
         run: |
           sudo apt-get update
-          sudo apt-get install -y openscad xvfb
+          sudo apt-get install -y openscad xvfb libfcl-dev
+          python -m pip install --upgrade pip
+          python -m pip install numpy trimesh python-fcl
           openscad --version
-          python3 --version
+          python --version
+          python - <<'PY'
+          import numpy
+          import trimesh
+          import fcl
+          from trimesh.collision import CollisionManager
+          CollisionManager()
+          print("motion QA Python/FCL runtime OK")
+          PY
 
       - name: Run sampled two-axis collision and clearance sweeps
         run: |
-          python3 tools/motion_qa.py --clearance-margin 0.5
+          python tools/motion_qa.py --clearance-margin 0.5 --alt-step 1
           cat build/motion-qa/SUMMARY.md
 
       - name: Upload motion QA evidence
