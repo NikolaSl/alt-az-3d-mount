@@ -4,7 +4,7 @@ This file is the short bootstrap index for resuming the project from a fresh cha
 
 ## Current phase
 
-**Dual-axis CAD prototype complete enough for browser review; physical fit validation still pending before production printing.**
+**Dual-axis CAD prototype complete; physical fit calibration is now the main production-print gate.**
 
 The current architecture is an Alt-Az mount for a balanced payload below 1 kg using two 28BYJ-48 stepper motors and an additional printable 20:1 reducer on each axis.
 
@@ -48,6 +48,9 @@ The full mount supports `ALT_ANGLE` for motion inspection. Existing documented v
 - Formal part decomposition and status ledger in `PARTS.md`.
 - Stable mechanical interface contracts and invalidation map in `INTERFACES.md`.
 - Repository-first continuity/mobile workflow contract.
+- Physical calibration procedure in `CALIBRATION.md`.
+- Three browser-renderable calibration coupons for bearings/shaft, fasteners/nut traps and the 28BYJ-48 mount/Double-D shaft.
+- Full CGAL/mesh/visual QA of all three calibration coupons documented in `docs/calibration-qa.md`.
 
 ## Current source-of-truth documents
 
@@ -60,10 +63,12 @@ Read in this order when resuming work:
 5. `PARTS.md` — elementary decomposition, stable part IDs, dependency/status ledger
 6. `INTERFACES.md` — stable interface IDs, contracts and change-propagation rules
 7. `ASSEMBLY.md` — current printable quantities, purchased BOM and physical assembly sequence
-8. `src/config.scad` — shared numeric parameters and datums
-9. `docs/visual-qa.md`
-10. `docs/alt-drive-qa.md`
-11. current relevant assembly and neighboring part sources
+8. `CALIBRATION.md` — measurement worksheet and physical fit procedure
+9. `src/config.scad` — shared numeric parameters and datums
+10. `docs/visual-qa.md`
+11. `docs/alt-drive-qa.md`
+12. `docs/calibration-qa.md`
+13. current relevant assembly and neighboring part sources
 
 When changing geometry, use the stable part IDs from `PARTS.md` and interface IDs from `INTERFACES.md` in reasoning/commit notes where practical. This makes recursive backtracking and revalidation traceable across chats.
 
@@ -75,15 +80,25 @@ Measure the actual two 28BYJ-48 units before production print. Clone dimensions 
 
 Affected interface family: `I-003`, `I-004`, `I-020`, `I-021` and downstream gearbox context.
 
+The dedicated `src/calibration/byj48_fit_coupon.scad` is ready to test both the mounting pattern and three Double-D clearances.
+
 ### HOLD-PRINT-FITS
 
 Calibrate printer/material-dependent `FIT` / `PRESS_FIT`, screw clearances, captive nuts and bearing pockets before the complete print set.
 
-This can invalidate multiple printed-to-hardware interfaces; use the invalidation map in `INTERFACES.md` rather than changing local holes independently.
+The ready-to-print coupons are:
+
+```text
+src/calibration/mechanical_fit_coupon.scad
+src/calibration/fastener_fit_coupon.scad
+src/calibration/byj48_fit_coupon.scad
+```
+
+Record raw results in `CALIBRATION.md` before changing shared parameters.
 
 ### HOLD-AZ-AXLE
 
-Freeze the AZ compound-gear intermediate axle only after physical fit validation. The design intent is a properly supported smooth/shoulder axle, not a long unsupported cantilever screw.
+Freeze the AZ compound-gear intermediate axle only after physical fit validation. The CAD already provides upper/lower support intent; the real shoulder/plain-shank axle and final length still need dry-fit confirmation.
 
 Primary contract: `I-006`.
 
@@ -97,42 +112,57 @@ Primary contracts: `I-021`, `I-023`, `I-025`.
 
 At minimum:
 
-- measure both motors with calipers;
+- measure both motors with calipers and fill `CALIBRATION.md`;
 - measure actual 608ZZ bearings and Ø8 shaft;
-- print fit coupons for bearing, shaft, M3/M4 and captive-nut dimensions;
-- test 1/4-20 and M8 captive interfaces;
-- test motor Double-D pinion fit;
-- test ALT output hub/spacer and grub-screw strategy;
-- dry-fit assembly before applying threadlocker or committing to all final hardware lengths.
+- print the three calibration coupons using the intended production material/profile;
+- select verified 608, shaft, M3/M4 and captive-nut fits;
+- select the verified Double-D shaft clearance;
+- feed results into `src/config.scad` only through the interface/invalidation procedure;
+- print/dry-fit the AZ compound axle support and ALT output stack;
+- dry-fit the complete mechanical assembly before threadlocker/final fastener-length freeze.
 
 After a physical result changes a shared parameter, use `INTERFACES.md` to identify what is invalidated, mark affected entries in `PARTS.md`, re-run QA, then update `ASSEMBLY.md` and this checkpoint.
 
-See `ASSEMBLY.md` for the complete current sequence and BOM.
-
 ## Browser/mobile review path
 
-GitHub Pages deploys the current `src/` OpenSCAD tree and generates a render manifest automatically on source/site changes. In a normal browser, including phone/tablet, the user can select a printable part or assembly, run OpenSCAD WebAssembly locally, inspect the STL interactively and open the exact repository source used.
+GitHub Pages deploys the current `src/` OpenSCAD tree and generates a render manifest automatically on source/site changes. In a normal browser, including phone/tablet, the user can select a printable part, assembly or calibration coupon, run OpenSCAD WebAssembly locally, inspect the STL interactively and open the exact repository source used.
 
-The mobile page also links directly to current project state, parts ledger, interface map, assembly/BOM, repository contract and design protocol so a human reviewer can inspect both geometry and engineering state without a desktop CAD session.
+The mobile page links directly to current project state, parts ledger, interface map, assembly/BOM, calibration procedure, repository contract and design protocol.
 
-For every new major part or subsystem, browser publication/review is part of the integration gate defined in `REPOSITORY_CONTRACT.md`.
+## Remaining CAD work not blocked by measurements
 
-## Next recommended engineering step
+The core two-axis mechanism is modeled. The main remaining geometry that can be completed without measured motor fits is packaging/accessory work, especially:
 
-Do **not** extend geometry blindly before the physical interface assumptions are known.
+1. a stable removable tabletop adapter/base for the original flat-surface use case;
+2. optional cable routing/strain relief once controller placement is decided;
+3. optional electronics/ULN2003/controller carrier if electronics are kept in the mechanical project;
+4. final print-orientation/production-set organization after physical fits are frozen.
 
-Recommended next sequence:
+The tabletop adapter is the next recommended non-blocked mechanical part because the original requirement included operation on a normal flat surface and the current `az_base` is primarily optimized for a 1/4-20 tripod interface.
 
-1. measure the actual 28BYJ-48 motors and purchased bearings/shaft;
-2. map each measured change to interface IDs in `INTERFACES.md`;
-3. feed approved measurements into `src/config.scad`;
-4. mark affected part IDs `NEEDS_REVALIDATION` in `PARTS.md`;
-5. generate small physical fit coupons for uncertain interfaces;
-6. re-run affected part QA and full assembly QA in dependency order;
-7. update `ASSEMBLY.md`, BOM and this file with frozen/changed dimensions;
-8. only then proceed toward the production print set or further accessories/electronics.
+## Next recommended engineering sequence
 
-If the user explicitly wants continued conceptual/CAD development before hardware measurement, mark new dependent interfaces provisional and preserve that status in `PARTS.md` / `INTERFACES.md`.
+Two tracks can proceed in parallel:
+
+```text
+PHYSICAL TRACK
+measure hardware
+→ print calibration coupons
+→ report fit results
+→ update config/interface states
+→ re-QA affected chain
+→ functional dry-fit
+→ production print freeze
+
+CAD TRACK
+P-TABLETOP-BASE
+→ per-part QA
+→ integrate with full mount
+→ assembly/stability review
+→ update PARTS / INTERFACES / ASSEMBLY / BOM / browser site
+```
+
+The next CAD part should therefore be the removable tabletop base unless the user explicitly prioritizes electronics or another accessory.
 
 ## Continuity invariant
 
