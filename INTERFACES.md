@@ -14,6 +14,7 @@ Stable interface IDs are used so that a geometry change can be traced to the exa
 4. Changing a contract invalidates every dependent part listed for that interface until QA is repeated.
 5. `CAD_VALIDATED` means geometric/context QA is acceptable. It does **not** imply physical fit is proven.
 6. Any interface involving actual printer fit, motor clone dimensions, bearing fit, shaft fit or purchased fasteners remains `PHYSICAL_PENDING` until measured/tested.
+7. A geometry/interface change that affects a motion envelope invalidates the corresponding `M-*` contract and requires `MOTION_QA_PROTOCOL.md` to be re-run.
 
 ## Interface register
 
@@ -76,6 +77,8 @@ A-YOKE
 A-PAYLOAD
 A-FULL
 A-TABLETOP-FULL
+M-AZ
+M-ALT
 ```
 
 ### `I-015` — ALT bearing/shaft chain
@@ -88,7 +91,7 @@ The two 608 bearings and Ø8 shaft form one interface chain, not three unrelated
 - free shaft rotation through both bearings;
 - acceptable axial endplay after collar/output stack installation.
 
-If arm spacing or bearing datum changes, payload and ALT gearbox context QA must be repeated.
+If arm spacing or bearing datum changes, payload and ALT gearbox context QA and `M-ALT` must be repeated.
 
 ### `I-019` — drive arm to ALT gearbox
 
@@ -119,33 +122,40 @@ Required invariants:
 - The Ø190 printed disk and four compliant feet provide a support footprint, but CAD geometry alone does not prove overturn stability for every 1 kg payload/ALT angle.
 - Physical stability is verified with the actual payload CG before unattended use.
 
-Changing `AZ_PEDESTAL_D`, `TRIPOD_*` or any `TABLETOP_*` geometry invalidates `P-TABLETOP-BASE`, `A-TABLETOP-CONTEXT` and `A-TABLETOP-FULL`.
+Changing `AZ_PEDESTAL_D`, `TRIPOD_*` or any `TABLETOP_*` geometry invalidates `P-TABLETOP-BASE`, `A-TABLETOP-CONTEXT`, `A-TABLETOP-FULL` and relevant motion QA.
 
 ## Motion contracts
 
-| Motion ID | Moving assembly | Fixed/reference assembly | Required range/checkpoints | Collision-sensitive interfaces |
-|---|---|---|---|---|
-| `M-AZ` | everything above `P-AZ-TURNTABLE` | `P-AZ-BASE` | nominal 360° continuous azimuth | `I-002`, `I-009`; future cable routing |
-| `M-ALT` | shaft + payload stage + ALT output shaft-coupled elements | yoke arms / fixed ALT gearbox support | documented QA at `-20°`, `0°`, `45°`, `90°` | `I-015`–`I-027`, payload-to-arm/gearbox clearance |
+| Motion ID | Moving assembly | Fixed/reference assembly | Required range | Accepted CAD motion QA | Status |
+|---|---|---|---|---|---|
+| `M-AZ` | everything above `P-AZ-TURNTABLE` | `P-AZ-BASE` / tabletop envelope | nominal 360° continuous azimuth | actual assembly compiled at 0°..360° every 10° including wrap; 32 coupled AZ/ALT configurations; structural collision clearance is AZ-invariant for the current symmetric lower envelope/common rigid upper rotation | `MOTION_QA_PASS` |
+| `M-ALT` | shaft + payload stage + ALT output shaft-coupled elements | yoke arms / fixed ALT gearbox / lower structure | `-20° .. +90°` | FCL collision/distance sweep every 1° = 111 poses; zero collisions; min payload→upper = 6.0 mm at -20°; min payload→conservative lower = 43.0 mm at +90°; expanded lower envelope by 0.5 mm remains 42.5 mm clear | `MOTION_QA_PASS` |
 
-Any future cable management must be added as an explicit interface/motion constraint before being considered integrated.
+Accepted checkpoint: `docs/motion-qa-results.md`, tested commit `4d3d772e65116ac5072a4187624929237a1252e4`.
+
+The current AZ collision proof depends on two explicit invariants:
+
+1. payload, yoke and ALT gearbox undergo the same rigid AZ rotation;
+2. the lower diagnostic obstruction is a rotationally symmetric solid superset of the actual lower mechanical exterior.
+
+Any future cable management, connectors, electronics, hard stops or other asymmetric fixed geometry must be added as explicit motion constraints and invalidates this symmetry-based `M-AZ` clearance proof until QA is re-run.
 
 ## Parameter-to-interface invalidation map
 
 This is the first machine-readable-by-convention propagation layer. When one parameter family changes, inspect/revalidate at least the listed interfaces.
 
-| Parameter family | Interfaces to invalidate/recheck |
+| Parameter family | Interfaces / motion contracts to invalidate/recheck |
 |---|---|
-| `BYJ_*` | `I-003`, `I-004`, `I-020`, `I-021`; then AZ/ALT gearbox context assemblies |
-| `GEAR_*`, `CD_STAGE*` | `I-005`–`I-008`, `I-022`–`I-026` |
-| `FIT`, `PRESS_FIT`, `ELEPHANT_FOOT` | all printed-to-hardware fits, especially `I-001`, `I-013`–`I-016`, `I-018`, `I-021`, `I-025`, `I-027`, `I-028` |
-| `BEARING_608_*`, `AXIS_SHAFT_D`, `ALT_SHAFT_L` | `I-013`–`I-017`, `I-025`, `I-027`, plus `M-ALT` |
-| `AZ_*` | `I-002`–`I-010`; `AZ_PEDESTAL_*` also invalidates `I-028`; then all assemblies above AZ turntable |
+| `BYJ_*` | `I-003`, `I-004`, `I-020`, `I-021`; AZ/ALT gearbox context; `M-ALT` if external motor envelope changes |
+| `GEAR_*`, `CD_STAGE*` | `I-005`–`I-008`, `I-022`–`I-026`; motion QA if gearbox exterior/motion envelope changes |
+| `FIT`, `PRESS_FIT`, `ELEPHANT_FOOT` | all printed-to-hardware fits, especially `I-001`, `I-013`–`I-016`, `I-018`, `I-021`, `I-025`, `I-027`, `I-028`; motion QA if resulting geometry changes |
+| `BEARING_608_*`, `AXIS_SHAFT_D`, `ALT_SHAFT_L` | `I-013`–`I-017`, `I-025`, `I-027`, `M-ALT` |
+| `AZ_*` | `I-002`–`I-010`; `AZ_PEDESTAL_*` also invalidates `I-028`; `M-AZ`/`M-ALT` where lower or axis geometry changes |
 | `YOKE_*` | `I-010`–`I-019`, `M-ALT`, payload/gearbox collision QA |
-| `PAYLOAD_*`, `SHAFT_CLAMP_*` | `I-016`–`I-018`, `M-ALT` |
-| `ALT_*` | `I-019`–`I-026`, `M-ALT` |
-| `TRIPOD_*` | `I-001`, `I-018`, `I-028` |
-| `TABLETOP_*` | `I-028`, `A-TABLETOP-CONTEXT`, `A-TABLETOP-FULL` |
+| `PAYLOAD_*`, `SHAFT_CLAMP_*` | `I-016`–`I-018`, `M-ALT` and coupled motion QA |
+| `ALT_*` | `I-019`–`I-026`, `M-ALT` and coupled motion QA |
+| `TRIPOD_*` | `I-001`, `I-018`, `I-028`; motion QA only if external envelope changes |
+| `TABLETOP_*` | `I-028`, `A-TABLETOP-CONTEXT`, `A-TABLETOP-FULL`, lower-envelope motion QA |
 
 ## Backtracking procedure using interface IDs
 
@@ -154,8 +164,8 @@ When a new part cannot be made compatible:
 1. name the failing interface ID rather than describing the problem only informally;
 2. identify the parameter/part that owns the blocking constraint;
 3. revise the nearest upstream owner;
-4. mark the dependent interfaces and parts `NEEDS_REVALIDATION`;
-5. run QA outward from that point in dependency order;
-6. update `PARTS.md`, `ASSEMBLY.md` and `PROJECT_STATE.md` with the result.
+4. mark the dependent interfaces, parts and any affected `M-*` contracts `NEEDS_REVALIDATION`;
+5. run QA outward from that point in dependency order, including motion QA where the motion envelope changed;
+6. update `PARTS.md`, `ASSEMBLY.md`, `docs/motion-qa-results.md` when applicable, and `PROJECT_STATE.md` with the result.
 
 This prevents global redesign when a local upstream correction is sufficient, while still ensuring no affected dependency remains silently stale.
