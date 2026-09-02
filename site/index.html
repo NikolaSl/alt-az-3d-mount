@@ -11,7 +11,7 @@
   <header>
     <div>
       <h1>Alt-Az 3D Mount</h1>
-      <p>Repository OpenSCAD → WebAssembly → STL validator</p>
+      <p>Repository OpenSCAD → published STL / background WebAssembly validator</p>
     </div>
     <a id="repoLink" class="repo-link" href="https://github.com/NikolaSl/alt-az-3d-mount" target="_blank" rel="noreferrer">GitHub repository</a>
   </header>
@@ -33,12 +33,23 @@
       SCAD entry point
       <select id="modelSelect"></select>
     </label>
-    <button id="renderButton" type="button">Render with OpenSCAD</button>
-    <button id="downloadButton" type="button" disabled>Download generated STL</button>
+    <button id="renderButton" type="button">Re-render in browser</button>
+    <button id="cancelButton" type="button" disabled>Cancel render</button>
+    <button id="downloadButton" type="button" disabled>Download displayed STL</button>
     <a id="sourceLink" class="button-link" href="#" target="_blank" rel="noreferrer">Source at this commit</a>
   </section>
 
-  <div id="status" class="status">Starting viewer…</div>
+  <div id="status" class="status" aria-live="polite">Starting viewer…</div>
+
+  <section id="renderProgress" class="render-progress" aria-live="polite" hidden>
+    <div class="progress-head">
+      <strong id="progressStage">starting</strong>
+      <span id="progressElapsed">0:00</span>
+    </div>
+    <progress id="progressBar" max="100" value="0"></progress>
+    <div id="progressDetail" class="progress-detail">Preparing render…</div>
+    <div class="progress-note">During the OpenSCAD geometry stage the bar is intentionally indeterminate because OpenSCAD does not expose a reliable geometric percentage. Elapsed time and console activity remain live, and the render can be cancelled without freezing this page.</div>
+  </section>
 
   <main>
     <section class="panel viewer-panel">
@@ -64,7 +75,7 @@
   </details>
 
   <footer>
-    The source snapshot and the OpenSCAD WebAssembly runtime are served from this GitHub Pages deployment. Rendering happens locally in the browser; no CAD server is required. Project state, part/interface/motion contracts, assembly/BOM, calibration and accepted QA results remain the persistent engineering memory across chats and devices.
+    Published STL previews are built by GitHub Actions from the exact repository commit and load without running CAD on the phone. “Re-render in browser” performs an independent OpenSCAD WebAssembly compile in a Web Worker, so complex geometry no longer blocks the page UI. Project state, part/interface/motion contracts, assembly/BOM, calibration and accepted QA results remain the persistent engineering memory across chats and devices.
   </footer>
 
   <script>
