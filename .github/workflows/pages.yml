@@ -7,7 +7,6 @@ on:
       - "src/**"
       - "site/**"
       - "tools/build_browser_manifest.py"
-      - "tools/prebuild_browser_previews.py"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -82,12 +81,6 @@ jobs:
                   raise SystemExit(f"bare Three.js import remains in {filename}")
           PY
 
-      - name: Install native OpenSCAD for published assembly previews
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y openscad xvfb
-          openscad --version
-
       - name: Snapshot source and build dependency-aware manifest
         env:
           REPOSITORY: ${{ github.repository }}
@@ -95,18 +88,11 @@ jobs:
         run: |
           rm -rf site/repo-src site/prebuilt
           cp -R src site/repo-src
-          mkdir -p site/prebuilt
           touch site/.nojekyll
 
           python3 tools/build_browser_manifest.py \
             --repository "$REPOSITORY" \
             --commit "$COMMIT_SHA"
-
-      - name: Prebuild expensive assembly previews
-        run: |
-          python3 tools/prebuild_browser_previews.py \
-            --workers 2 \
-            --timeout 240
 
       - name: Version browser assets and validate site
         run: |
@@ -133,8 +119,6 @@ jobs:
           test -s site/vendor/three/three.module.js
           test -s site/vendor/three/three.core.js
           test -s site/scad-manifest.json
-          test -s site/prebuilt/assemblies/full_mount.stl
-          test -s site/prebuilt/assemblies/tabletop_full_mount.stl
           test -f site/repo-src/parts/az_base.scad
 
           node --check site/app.js
@@ -148,10 +132,8 @@ jobs:
           data = json.loads(Path("site/scad-manifest.json").read_text())
           assert data["files"] and data["entries"]
           assert data["renderer"]["worker"] is True
+          assert not any("prebuilt" in entry for entry in data["entries"]), "browser-only policy must not publish prebuilt STL entries"
           full = next(x for x in data["entries"] if x["path"] == "assemblies/full_mount.scad")
-          tabletop = next(x for x in data["entries"] if x["path"] == "assemblies/tabletop_full_mount.scad")
-          assert full.get("prebuilt")
-          assert tabletop.get("prebuilt")
           assert len(full["dependencies"]) < len(data["files"]), "dependency closure did not reduce full_mount source set"
           print(f"site manifest OK: {len(data['files'])} files, {len(data['entries'])} entries")
           print(f"full_mount dependency closure: {len(full['dependencies'])}/{len(data['files'])}")
