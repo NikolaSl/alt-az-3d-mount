@@ -1,32 +1,25 @@
 # Assembly guide and hardware BOM
 
-Този файл е **единственият източник на истина за механичното сглобяване** на проекта. При всяка промяна на механичен детайл трябва да се актуализират едновременно OpenSCAD моделът, visual QA и съответната стъпка тук.
+Този файл е **source of truth за механичното сглобяване**. При промяна на механичен детайл трябва да се актуализират едновременно SCAD моделът, visual/assembly QA и съответната секция тук.
 
-> **Статус:** инженерен прототип. Вече има работеща AZ механика, вилка и товарна платформа, но пълният ALT редуктор все още не е финализиран. Не печатай целия комплект наведнъж, преди всички редове `HOLD` по-долу да бъдат затворени.
+> **Статус:** CAD прототип с завършена двуосна кинематична верига. AZ и ALT използват 28BYJ-48 + печатаем 20:1 редуктор. Преди production print остават физическите fit tests, реалните размери на конкретните мотори и окончателното физическо решение за двустранната AZ междинна ос.
 
 ## 1. Механична верига
 
-Крайното сглобяване следва тази последователност:
-
 ```text
-фото статив / тестова основа
+фото статив / tabletop adapter
         │
         ▼
 az_base
   ├─ captive 1/4-20 гайка към статива
-  ├─ captive M8 гайка + M8 централна AZ ос
-  ├─ 28BYJ-48 AZ мотор
-  └─ междинна ос на AZ редуктора
+  ├─ M8 централна AZ ос
+  └─ 28BYJ-48 AZ мотор
         │
         ▼
-20:1 AZ редуктор
-12T motor → 48T/12T compound → 60T output
+AZ 20:1: 12T → 48T/12T → 60T
         │
         ▼
-az_gearbox_cover
-        │
-        ▼
-az_turntable
+az_gearbox_cover → az_turntable
         │
         ▼
 yoke_base_bridge
@@ -37,263 +30,266 @@ yoke_arm   yoke_arm
    │  608ZZ   │  608ZZ
    └────┬─────┘
         ▼
-    Ø8 mm ALT вал
+    Ø8 × 165 mm ALT вал
         │
-        ▼
-2 × split shaft clamp
+        ├──────── payload split clamps → payload_plate → 1/4-20 payload screw
         │
-        ▼
-payload_plate
-        │
-        ▼
-1/4-20 sliding camera screw
-        │
-        ▼
-телефон / камера / компактна оптика
+        └─ drive side:
+           alt_output_spacer
+             │
+             ▼
+           ALT 60T output gear/hub
+             ▲
+             │ 12T → 48T/12T → 60T = 20:1
+             │
+           28BYJ-48 ALT motor
+             │
+           alt_gearbox_plate + alt_gearbox_guard
 ```
 
 ## 2. Печатни детайли
 
 | Кол. | Файл | Роля |
 |---:|---|---|
-| 1 | `src/parts/az_base.scad` | Неподвижна основа, стативен интерфейс, AZ мотор и оси |
-| 1 | `src/parts/az_gearbox_cover.scad` | Корпус на AZ редуктора и плъзгащи опори |
+| 1 | `src/parts/az_base.scad` | Неподвижна основа, tripod interface и AZ мотор |
+| 1 | `src/parts/az_gearbox_cover.scad` | Корпус на AZ редуктора |
 | 1 | `src/parts/az_turntable.scad` | Въртяща AZ платформа |
-| 1 | `src/parts/gear_az_motor_12t.scad` | 12T пиньон за 28BYJ-48 |
-| 1 | `src/parts/gear_az_compound_48_12t.scad` | Междинно 48T/12T колело |
-| 1 | `src/parts/gear_az_output_60t.scad` | Изходно 60T AZ колело/главина |
-| 1 | `src/parts/yoke_base_bridge.scad` | Напречна основа на вилката |
-| 1 | `src/parts/yoke_arm_drive.scad` | Задвижващо рамо с 608 лагер и ALT gearbox pattern |
-| 1 | `src/parts/yoke_arm_idler.scad` | Пасивно рамо с 608 лагер |
-| 2 | `src/parts/payload_clamp_lower.scad` | Долни половини на скобите за Ø8 ALT вал |
-| 2 | `src/parts/payload_clamp_upper.scad` | Горни половини на скобите за Ø8 ALT вал |
+| 1 | `src/parts/gear_az_motor_12t.scad` | AZ motor pinion |
+| 1 | `src/parts/gear_az_compound_48_12t.scad` | AZ compound gear |
+| 1 | `src/parts/gear_az_output_60t.scad` | AZ output gear/hub |
+| 1 | `src/parts/yoke_base_bridge.scad` | Основа на вилката |
+| 1 | `src/parts/yoke_arm_drive.scad` | Drive-side рамо с 608 и ALT gearbox mounting pattern |
+| 1 | `src/parts/yoke_arm_idler.scad` | Idler рамо с 608 |
+| 2 | `src/parts/payload_clamp_lower.scad` | Долни половини на Ø8 shaft clamps |
+| 2 | `src/parts/payload_clamp_upper.scad` | Горни половини на Ø8 shaft clamps |
 | 1 | `src/parts/payload_plate.scad` | Универсална товарна платформа |
-| 1 | `src/parts/camera_screw_knob.scad` | Ръкохватка за метален 1/4-20 винт |
-| 1–2 | `src/parts/shaft_collar_8mm.scad` | Временно/допълнително аксиално фиксиране на ALT вала |
+| 1 | `src/parts/camera_screw_knob.scad` | Ръкохватка за метален 1/4-20 болт |
+| 1 | `src/parts/shaft_collar_8mm.scad` | Idler-side аксиално фиксиране на ALT вала |
+| 1 | `src/parts/alt_gearbox_plate.scad` | Структурна ALT gearbox плоча |
+| 1 | `src/parts/alt_gearbox_guard.scad` | Сваляем ALT guard + горна опора на compound axle |
+| 1 | `src/parts/gear_alt_motor_12t.scad` | ALT motor pinion |
+| 1 | `src/parts/gear_alt_compound_48_12t.scad` | ALT 48T/12T compound gear |
+| 1 | `src/parts/gear_alt_output_60t.scad` | ALT 60T output gear с clamp hub |
+| 1 | `src/parts/alt_output_spacer.scad` | Spacer от 608 inner race до ALT output gear |
 
-Сглобяемите виртуални модели са в `src/assemblies/` и служат за collision/visual QA; те не са отделни печатни части.
+Виртуалните assembly файлове не се печатат. Основните са:
+
+- `src/assemblies/az_stage.scad`
+- `src/assemblies/yoke_stage.scad`
+- `src/assemblies/payload_stage.scad`
+- `src/assemblies/alt_drive_stage.scad`
+- `src/assemblies/full_mount.scad`
 
 ## 3. Непечатни компоненти
-
-Размерите на винтовете по-долу са **начални монтажни размери**. При първата физическа сглобка се проверяват с реалните принтове и при нужда се коригират с една стандартна дължина нагоре/надолу.
 
 ### Основни механични компоненти
 
 | Кол. | Компонент | Бележка |
 |---:|---|---|
-| 2 | 28BYJ-48, 5 V или 12 V | Един за AZ и един за ALT; измери конкретния клонинг |
-| 2 | 608ZZ, 8×22×7 mm | По един във всяко рамо на вилката |
-| 1 | Гладък стоманен вал Ø8 mm × ~150 mm | ALT ос; не използвай резбова шпилка в лагерите |
-| 1 | M8 стандартна шестостенна гайка | Captive гайка в `az_base` |
-| 1 | M8 шпилка/болт ~50 mm | Централна AZ ос; реалната дължина се отрязва след dry-fit |
-| 1 | M8 нископрофилна/Nyloc гайка + шайба | Горна фиксация на turntable; не се пренатяга |
-| 1 | 1/4-20 UNC стандартна шестостенна гайка | Captive гайка в долната част на `az_base` към фото статив |
-| 1 | 1/4-20 UNC болт 3/4"–1" | В `camera_screw_knob`; избери така, че в товара да влизат ~5–7 mm резба |
-| 3 | Малки PTFE лепенки/лента | Върху трите AZ glide pads; по избор, но препоръчително |
-| 1 | Пластмасово-съвместима грес или сух PTFE лубрикант | Много тънък слой по зъбите |
-| 1 | Medium threadlocker | Само върху метал-метал резби, не върху пластмаса |
+| 2 | 28BYJ-48, 5 V или 12 V | Един за AZ и един за ALT; измери реалните клонинги |
+| 2 | 608ZZ, 8×22×7 mm | По един във всяко рамо |
+| 1 | Гладък стоманен вал Ø8 × **165 mm** | ALT ос; може да се отреже от по-дълъг прът |
+| 1 | M8 гайка | Captive в `az_base` |
+| 1 | M8 шпилка/болт ~50 mm | Централна AZ ос; final length след dry-fit |
+| 1 | M8 low-profile/Nyloc гайка + шайба | Горна фиксация на turntable |
+| 1 | 1/4-20 UNC гайка | Captive tripod гайка в `az_base` |
+| 1 | 1/4-20 UNC болт 3/4"–1" | Payload screw в `camera_screw_knob` |
+| 3 | Малки PTFE лепенки/лента | Върху AZ glide pads |
+| 1 | Пластмасово-съвместима грес / dry PTFE | Само тънък слой върху зъбите |
+| 1 | Medium threadlocker | Само върху metal-to-metal резби |
 
-### Крепеж — текуща конфигурация
+### AZ крепеж
 
 | Кол. | Крепеж | Къде |
 |---:|---|---|
-| 4 | M3×20, ниска/вкопана глава + 4 M3 гайки | `az_gearbox_cover` към `az_base` |
-| 4 | M3×12 + 4 M3 гайки | `az_turntable` към главината на 60T AZ колелото |
-| 1 | M3 shoulder screw / гладка Ø3 mm ос, дължина TBD | Междинното 48T/12T AZ колело — виж `HOLD-AZ-AXLE` |
-| 4 | M4×16 + 4 M4 гайки | `yoke_base_bridge` към captive pockets в `az_turntable` |
-| 2 | M4×40–45 + 2 Nyloc гайки + шайби | Напречно заключване на двете рамена в bridge slots |
-| 4 | M3×25 + 4 M3 гайки | Двете split clamps + `payload_plate` |
-| 1–2 | M3×6 grub screw | В `shaft_collar_8mm`; отвора се пробива/метчи M3 след печат |
-| 2 | M4×8–10 + шайби | AZ 28BYJ-48 към `az_base`; провери фланеца на твоя мотор |
+| 4 | M3×20 + M3 гайки | `az_gearbox_cover` към `az_base` |
+| 4 | M3×12 + M3 гайки | `az_turntable` към AZ 60T hub |
+| 1 | M3 shoulder/plain-shank axle, length TBD | AZ compound gear; виж `HOLD-AZ-AXLE` |
+| 4 | M4×16 + M4 гайки | `yoke_base_bridge` към turntable |
+| 2 | M4×40–45 + Nyloc + шайби | Заключване на yoke arms в bridge |
+| 2 | M4×8–12 + гайки/шайби | AZ 28BYJ-48; според конкретния фланец |
 
-ALT gearbox крепежът ще бъде добавен тук, когато неговият final QA бъде завършен.
+### Payload / ALT крепеж
 
-## 4. Преди сглобяване — задължителни проверки
+| Кол. | Крепеж | Къде |
+|---:|---|---|
+| 4 | M3×25 + 4 M3 гайки | Двете split clamps + payload plate |
+| 1 | M3×6 grub screw | `shaft_collar_8mm`; pilot се пробива/метчи M3 |
+| 4 | **M3×12 countersunk** | `alt_gearbox_plate` към captive M3 nuts в `yoke_arm_drive` |
+| 2 | M4×10–12 + 2 M4 гайки | ALT 28BYJ-48 към gearbox plate |
+| 1 | M3 shoulder screw ~22 mm + 1 M3 гайка | ALT compound axle; plate + guard дават две опори |
+| 4 | M3×20 + 4 M3 гайки | ALT guard към gearbox plate |
+| 2 | M3×6 grub screws | ALT output hub към Ø8 shaft |
+| 0–2 | M3 heat-set inserts, optional | По-здрав вариант вместо tapped plastic за output hub |
 
-1. Измери с шублер тялото, вала, flat-а и монтажните отвори на двата 28BYJ-48.
-2. Измери реалните 608 лагери и Ø8 вала.
-3. Направи малък fit test за `FIT`, `PRESS_FIT`, M3/M4 отвори и 608 pocket, преди големите принтове.
-4. Провери, че 1/4-20 гайката влиза плътно в captive pocket-а на `az_base`.
-5. Провери, че M8 гайката влиза плътно, без да разцепва pedestal-а.
-6. Провери Double-D отвора на 12T пиньона върху реалния 28BYJ-48 вал.
-7. Почисти elephant-foot и support остатъци от всички mating surfaces.
-8. Не насилвай 608 лагер в undersized pocket — коригирай параметъра, вместо да напукваш рамото.
+Дължините са начални. При първия физически dry-fit се коригират с една стандартна дължина нагоре/надолу, ако конкретните глави/гайки го изискват.
 
-## 5. Сглобяване стъпка по стъпка
+## 4. Задължителни fit tests преди голям печат
 
-### Стъпка A — интерфейс към статив
+1. Измери с шублер двата 28BYJ-48: body, boss, shaft, flat, mount spacing и hole diameter.
+2. Измери реалните 608 и Ø8 вала.
+3. Принтирай calibration coupon за `FIT`, `PRESS_FIT`, M3/M4 holes и 608 pocket.
+4. Провери 1/4-20 captive nut pocket в `az_base`.
+5. Провери M8 captive pocket и централната ос.
+6. Провери Double-D отвора на 12T pinion върху реалния motor shaft.
+7. Провери Ø8.20 bore на ALT output gear и spacer върху реалния вал.
+8. Провери M3 pilot/tap в малък пробен детайл преди да метчиш output hub-а.
+9. Почисти elephant-foot и support остатъци от mating surfaces.
 
-1. Постави металната **1/4-20 UNC гайка** през страничния канал в долния captive pocket на `az_base`.
-2. Увери се, че е ориентирана коаксиално с долния 1/4" отвор.
-3. Завий временно стандартен tripod screw отдолу и провери, че резбата влиза свободно, без гайката да се върти.
-4. Развий винта до окончателното монтиране на статив.
+## 5. Сглобяване — AZ
 
-`az_base` в текущия си вид е оптимизиран за фото статив. За стабилно поставяне директно върху маса ще бъде добавен отделен tabletop/feet adapter, вместо да се разчита само на Ø48 mm pedestal-а.
+### A. Tripod interface
 
-### Стъпка B — централна AZ ос
+1. Вкарай 1/4-20 metal nut през страничния канал на `az_base`.
+2. Провери с tripod screw, че гайката не се върти.
+3. За tabletop режим използвай отделен широк adapter/feet plate; Ø48 pedestal сам по себе си не е достатъчно стабилна масова основа за 1 kg payload.
 
-1. Вкарай M8 гайката в горния captive pocket на pedestal-а през страничния канал.
-2. Завий M8 шпилката така, че да стърчи вертикално през `az_base`, редуктора и `az_turntable`.
-3. Използвай две гайки временно за контриране и настройване на височината; final threadlocker се слага чак след dry-fit на целия AZ stack.
-4. Провери с ъгълник, че оста не е видимо наклонена.
+### B. Централна AZ ос
 
-### Стъпка C — AZ мотор
+1. Зареди captive M8 гайката.
+2. Завий M8 shaft/stud вертикално през `az_base`.
+3. Настрой височината при dry-fit; threadlocker чак след окончателното сглобяване.
 
-1. Постави 28BYJ-48 от долната страна на `az_base`.
-2. Центриращият boss трябва да влиза свободно в отвора, без моторът да носи страничен товар.
-3. Закрепи с 2× M4×8–10 и шайби.
-4. Не пренатягай: тънките метални уши на 28BYJ-48 лесно се огъват.
-5. Кабелът се ориентира към предвидения cable slot.
+### C. AZ мотор и 20:1 reducer
 
-### Стъпка D — 20:1 AZ редуктор
+1. Монтирай AZ 28BYJ-48 отдолу.
+2. Постави 12T Double-D pinion.
+3. Постави 48T/12T compound gear на междинната ос.
+4. Постави 60T output gear около M8 оста.
+5. Провери двете gear planes: 12↔48 и 12↔60.
+6. Завърти motor shaft на ръка няколко оборота и търси binding/periodic tight spots.
+7. Сложи минимално количество lubricant.
 
-Предавателното отношение е:
+### D. AZ cover и turntable
+
+1. Закрепи `az_gearbox_cover` с 4×M3.
+2. Добави PTFE върху трите glide pads.
+3. Свържи AZ 60T hub към `az_turntable` с 4×M3.
+4. Постави M8 washer + top nut.
+5. Стегни само до отстраняване на axial play; turntable трябва да се върти свободно.
+
+## 6. Сглобяване — yoke и payload
+
+### E. Yoke
+
+1. `yoke_base_bridge` към turntable с 4×M4.
+2. Press-fit по един 608ZZ от външната страна на двете рамена.
+3. Вкарай drive и idler arm в bridge slots.
+4. Заключи всеки arm с M4 transverse bolt + Nyloc.
+5. Провери коаксиалността на двата 608 преди да вкарваш shaft-а насила.
+
+### F. ALT shaft и payload
+
+1. Прекарай гладкия Ø8×165 mm вал през двата 608.
+2. Монтирай двете split clamps симетрично върху вала.
+3. Постави `payload_plate` и затегни 4×M3 постепенно.
+4. Постави idler-side `shaft_collar_8mm`, но остави малък axial endplay.
+5. Постави 1/4-20 bolt в `camera_screw_knob` и през longitudinal slot-а на payload plate.
+
+## 7. Сглобяване — ALT 20:1 drive
+
+ALT gearbox е фиксиран към **външната страна на `yoke_arm_drive`**. Gear ratio е:
 
 ```text
-12T → 48T = 4:1
-12T → 60T = 5:1
-общо       = 20:1
+12T motor → 48T = 4:1
+12T compound → 60T = 5:1
+общо = 20:1
 ```
 
-1. Натисни `gear_az_motor_12t` върху Double-D вала на мотора. Не го набивай с чук; при нужда коригирай Double-D fit-а.
-2. Постави `gear_az_compound_48_12t` върху междинната Ø3 mm ос/M3 shoulder screw.
-3. 48T слой трябва да е в равнината на motor 12T; горният 12T слой трябва да е в равнината на output 60T.
-4. Постави `gear_az_output_60t` около M8 централната ос.
-5. Завърти мотора на ръка няколко оборота. Трите колела трябва да се въртят без стегнати позиции.
-6. Ако има binding, първо провери center distances и elephant-foot; не увеличавай backlash на сляпо.
-7. Нанеси само минимално количество пластмасово-съвместим лубрикант.
+### G. Подготовка на ALT gearbox plate
 
-### Стъпка E — AZ gearbox cover
+1. В back-side pockets на `alt_gearbox_plate` постави 4×M3 гайки за guard screws.
+2. Постави още една M3 гайка в pocket-а на compound axle.
+3. Монтирай втория 28BYJ-48 **зад** plate-а; shaft-ът трябва да сочи през plate-а навън.
+4. Закрепи мотора с 2×M4 и гайки. Гайките от gear side са далеч от gear envelopes.
+5. Постави `gear_alt_motor_12t` върху Double-D shaft-а. Motor shaft има достатъчна дължина за 5 mm gear face след 3.2 mm plate.
 
-1. Постави 4× M3 captive гайки в `az_base` за cover screws.
-2. Постави `az_gearbox_cover` над редуктора, без да изместваш колелата.
-3. Провери ръчно, че горният 12T и 60T слой не опират в покрива на корпуса.
-4. Завий 4× M3×20 вкопано/нископрофилно, равномерно по диагонал.
-5. Залепи малко парче PTFE върху всеки от трите glide pads, без да променяш значително височината им.
+### H. Plate към drive arm
 
-### Стъпка F — 60T output към turntable
+1. Увери се, че 608 е напълно seated.
+2. Централният Ø24 opening на plate-а трябва да оставя bearing face-а свободен.
+3. Постави plate-а върху външната страна на `yoke_arm_drive`.
+4. Използвай 4× **M3 countersunk** screws към captive nuts в arm-а.
+5. Главите трябва да са flush. Това е важно: lower 48T gear минава близо до един от тези screw positions.
 
-1. Зареди 4× M3 гайки в captive pockets на output hub-а.
-2. Напасни locator-а на `az_turntable` върху главината на `gear_az_output_60t`.
-3. Постави 4× M3×12 през turntable-а към captive гайките на hub-а.
-4. Стегни по диагонал.
-5. Постави шайба и горната M8 гайка.
-6. Стегни M8 само докато axial play изчезне. Turntable трябва да се върти свободно върху glide pads — M8 гайката **не е лагерен preload винт**.
-7. Завърти turntable 360° на ръка и провери за периодично стягане.
+### I. Output shaft stack
 
-### Стъпка G — yoke bridge към turntable
+1. Върху drive-side края на Ø8 shaft постави `alt_output_spacer`.
+2. Spacer OD е 12 mm и трябва да опира **само в inner race на 608**.
+3. Постави `gear_alt_output_60t` след spacer-а.
+4. Засега не стягай двата radial set screws.
+5. Проверка: при 165 mm вал има достатъчно drive-side projection за spacer + 60T gear + 15 mm clamp hub.
 
-1. Постави 4× M4 гайки в underside pockets на `az_turntable`.
-2. Центрирай `yoke_base_bridge` по четирите отвора.
-3. Постави 4× M4×16 отгоре през bridge-а.
-4. Стегни кръстосано. Bridge-ът трябва да легне плътно и без rocking.
+### J. Compound gear и guard
 
-### Стъпка H — 608 лагери във вилката
+1. Постави `gear_alt_compound_48_12t` на неговия center distance спрямо output gear и motor pinion.
+2. Постави `alt_gearbox_guard` върху plate-а.
+3. Прекарай M3 shoulder screw от guard roof през горния journal и през compound gear до captive M3 nut в plate-а.
+4. Стегни stationary axle-а, без да притискаш compound gear аксиално. Gear-ът трябва да се върти свободно върху гладката част на shoulder screw.
+5. Закрепи guard-а с 4×M3×20.
+6. Guard roof оставя минимум 2 mm axial clearance над gear stack-а.
 
-1. Вкарай по един 608ZZ от **външната страна** на `yoke_arm_drive` и `yoke_arm_idler`.
-2. Лагерът трябва да опре в вътрешния retaining lip.
-3. Използвай менгеме/преса с две плоски челюсти; не натискай само по вътрешната гривна.
-4. Ако press fit е прекалено стегнат, стоп — коригирай pocket размера.
+### K. ALT output clamp и gear mesh
 
-### Стъпка I — рамена към bridge
+1. Притисни 60T gear леко към spacer-а, без preload върху 608.
+2. Проверявай едновременно mesh-а 12→48 и 12→60 чрез бавно въртене на motor shaft-а.
+3. Когато gear planes са правилни, метчи двата radial pilot holes M3 (или постави подходящи inserts след test coupon).
+4. Постави 2×M3×6 grub screws. Поне единият е добре да стъпва върху малък flat на Ø8 shaft-а.
+5. Grub-screw centers са над gearbox roof-а, така че остават достъпни след поставяне на guard-а.
+6. Завърти механизма ръчно през поне няколко output degrees и провери за tight spots.
 
-1. Пъхни tenon-а на `yoke_arm_drive` в единия вертикален slot на `yoke_base_bridge`.
-2. Пъхни `yoke_arm_idler` в другия slot.
-3. Увери се, че двете 608 оси са на една височина и гледат една към друга.
-4. Постави по един M4×40–45 напречно през bridge + arm tenon.
-5. Сложи шайба и Nyloc гайка от другата страна.
-6. Стегни до премахване на луфта, без да деформираш печатните слотове.
+## 8. Балансиране
 
-### Стъпка J — Ø8 mm ALT вал
+1. Преди powered ALT test изключи мотора и провери свободното движение.
+2. Плъзни 1/4-20 payload screw по slot-а така, че CG да е възможно най-близо до ALT shaft.
+3. Цел: residual CG offset приблизително ≤10–15 mm при тежък payload.
+4. Ако slot travel не стига, премести phone/optic adapter чрез M4 pattern или добави малка противотежест.
 
-1. Прекарай гладкия Ø8×~150 mm вал през първия 608, през вътрешността на вилката и през втория 608.
-2. Валът трябва да се върти с пръсти без осезаемо заяждане.
-3. Ако двата лагера не са коаксиални, не насилвай вала — провери seating-а на рамената и bridge slots.
-4. Центрирай вала така, че да има достатъчно място отвън на drive arm за бъдещия ALT reducer.
+## 9. Механични тестове преди захранване
 
-### Стъпка K — товарни скоби върху ALT вала
-
-Има две split clamps, разположени симетрично по ширината на товарната платформа.
-
-1. Постави по една `payload_clamp_lower` под Ø8 вала в позициите ±`PAYLOAD_CLAMP_X`.
-2. Зареди 4× M3 гайки в captive pockets на долните половини.
-3. Постави `payload_clamp_upper` върху всяка долна половина, така че двете полуокръжности да образуват Ø8 bore.
-4. Постави `payload_plate` отгоре; четирите M3 отвора трябва да съвпаднат с clamp bolt pattern-а.
-5. Вкарай 4× M3×25 от горната страна на plate-а през upper/lower clamps до captive гайките.
-6. Стягай постепенно и последователно. Целта е платката да се върти **заедно с вала**, без да се смачква пластмасата.
-7. Преди окончателно стягане центрирай plate-а между двете рамена.
-
-### Стъпка L — аксиално фиксиране на ALT вала
-
-Докато final ALT output gear/hub не е монтиран:
-
-1. Постави `shaft_collar_8mm` от външната страна на единия или двата 608 лагера.
-2. Пробий pilot отвора до M3 tapping size според реалния принт и метчи M3.
-3. Постави M3×6 grub screw.
-4. Остави минимален аксиален луфт; collars не трябва да притискат лагерите странично.
-
-Когато drive-side ALT gearbox бъде финализиран, неговата output hub може да замени drive-side collar.
-
-### Стъпка M — 1/4-20 товарен винт
-
-1. Постави метален 1/4-20 hex bolt в `camera_screw_knob`.
-2. Главата трябва да се заключи в hex pocket-а и да не превърта.
-3. Прекарай болта отдолу през надлъжния slot на `payload_plate`.
-4. Плъзгай винта по slot-а, докато центърът на тежестта на товара се доближи максимално до ALT оста.
-5. Завий телефона/камерата/адаптера. Не допускай повече от приблизително 5–7 mm резба да влиза в стандартно camera tripod гнездо, освен ако производителят не допуска друго.
-6. Стегни knob-а на ръка.
-
-## 6. Балансиране
-
-28BYJ-48 не трябва да държи постоянно голям гравитационен момент.
-
-1. С изключен ALT мотор отпусни механиката така, че payload shaft да може да се върти свободно.
-2. Премести 1/4-20 винта в slot-а, докато товарът спре да пада сам към едната страна.
-3. Ако slot-ът не стига, премести самия phone/optics adapter чрез допълнителните M4 отвори или добави малка противотежест.
-4. Целта е остатъчният CG offset да е приблизително ≤10–15 mm при тежък товар.
-
-## 7. Финални механични тестове
-
-Преди включване на моторите:
-
-- [ ] AZ може да направи пълни 360° без binding.
-- [ ] При бавно ръчно въртене на AZ motor shaft няма пропускане на зъби.
-- [ ] Turntable няма видим radial wobble.
-- [ ] Bridge не се мести спрямо turntable.
+- [ ] AZ прави 360° без binding.
+- [ ] AZ turntable няма забележим radial wobble.
+- [ ] Yoke bridge не се движи спрямо turntable.
 - [ ] Двете yoke arms са успоредни.
-- [ ] ALT Ø8 вал се върти свободно в двата 608.
-- [ ] ALT валът няма значимо аксиално местене.
-- [ ] Payload plate е центриран и не докосва yoke arms в целия необходим ALT диапазон.
-- [ ] Всички метални captive гайки са реално заключени в pockets и не превъртат.
-- [ ] Кабелите не попадат в зъбните колела.
-- [ ] Товарът е балансиран преди моторен тест.
+- [ ] Ø8 ALT shaft се върти свободно през двата 608.
+- [ ] Spacer контактува само с drive-side 608 inner ring.
+- [ ] ALT 60T output gear няма axial rubbing в plate/guard.
+- [ ] ALT compound gear има две опори на stationary axle-а: plate + guard roof.
+- [ ] ALT motor body не докосва yoke arm.
+- [ ] Payload plate не докосва arms/gearbox при -20°, 0°, 45° и 90°.
+- [ ] Всички кабели са извън gear paths.
+- [ ] Payload е балансиран.
 
-След това моторите се тестват първо без товар, после с ~250 g, ~500 g и чак след това към проектния максимум под 1 kg.
+Powered tests: без товар → ~250 g → ~500 g → постепенно към проектния максимум под 1 kg.
 
-## 8. HOLD точки преди „готов за печат“ release
+## 10. QA правило
 
-### HOLD-AZ-AXLE — междинна ос на 48T/12T
+Всеки mechanical commit е готов само ако:
 
-Текущият дизайн има долна опора/отвор в `az_base`, но окончателният начин за **двустранно лагеруване/фиксиране на междинната Ø3 mm ос към cover-а** трябва да се замрази след физически fit test. Предпочитаното решение е гладка/shoulder ос с две опори, а не дълъг свободно конзолен винт.
+1. всеки нов printable SCAD се export-ва с full CGAL;
+2. OpenSCAD дава `Simple: yes`;
+3. STL е watertight и има един connected printable component;
+4. има ISO/top/bottom/front/right visual QA + сечения, когато са смислени;
+5. assembly QA проверява колизии с вече съществуващите части;
+6. `full_mount.scad` се проверява поне при ALT = -20°, 0°, 45°, 90°;
+7. този `ASSEMBLY.md` е актуализиран.
 
-### HOLD-ALT-DRIVE — ALT редуктор
+Последният ALT CAD QA премина за plate, guard, 12T, 48T/12T, 60T и spacer: `Simple: yes`, watertight, един connected component на детайл. Assembly QA при -20°/0°/45°/90° не показа колизия между payload plate, yoke и ALT gearbox.
 
-`yoke_arm_drive` вече има 4×M3 mounting pattern около оста, но final 20:1 ALT gearbox plate/guard/output hub още не е част от този assembly release. До неговото завършване ALT може да се валидира механично ръчно, но не е завършен моторизиран пакет.
+## 11. Оставащи HOLD / VERIFY точки
 
-### HOLD-MOTOR-DIMS — реални 28BYJ-48 размери
+### HOLD-AZ-AXLE
 
-Параметрите са по типичен 28BYJ-48. Преди production print се въвеждат реалните размери на конкретните мотори.
+AZ compound axle все още трябва да се замрази след физически fit test като двустранно поддържана гладка/shoulder ос. Не използвай дълъг свободно конзолен винт.
 
-### HOLD-PRINT-FITS — толеранси на принтера
+### VERIFY-ALT-DRIVE
 
-`FIT` и `PRESS_FIT` трябва да се калибрират за конкретния принтер, материал и orientation.
+ALT drive е завършен в CAD и visual QA, но трябва физически fit test на: motor shaft, Double-D pinion, M3 shoulder axle, Ø8 output bore/spacer и grub-screw clamp. След него размерите се замразяват.
 
-## 9. Правило за бъдещите итерации
+### HOLD-MOTOR-DIMS
 
-Всеки нов механичен commit е завършен само ако:
+Въведи реалните размери на конкретните 28BYJ-48 преди production print.
 
-1. SCAD се компилира до STL;
-2. CGAL дава `Simple: yes` и mesh-ът е watertight;
-3. visual QA има ISO/top/bottom/front/right + сечения, когато са смислени;
-4. assembly QA проверява колизии с вече съществуващите части;
-5. този `ASSEMBLY.md` е актуализиран с новия детайл, неговия крепеж, непечатните компоненти и точната му позиция в реда на сглобяване.
+### HOLD-PRINT-FITS
+
+`FIT` и `PRESS_FIT` се калибрират за конкретния printer/material/orientation преди целия комплект.
