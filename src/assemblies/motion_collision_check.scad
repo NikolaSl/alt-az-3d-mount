@@ -1,6 +1,6 @@
-// Reusable diagnostic boolean geometry for automated motion QA.
-// The top-level object is the intersection for one selected pose; companion
-// motion_collision_sweep.scad batches many poses in one OpenSCAD process.
+// Reusable diagnostic geometry for automated motion QA.
+// Modes 0/1 export one boolean intersection; modes 10/11/12 export reusable
+// collision meshes for the fast Python/FCL motion sweep.
 
 include <../config.scad>
 use <yoke_stage.scad>
@@ -13,7 +13,7 @@ use <../parts/camera_screw_knob.scad>
 
 AZ_ANGLE = is_undef(AZ_ANGLE) ? 0 : AZ_ANGLE;
 ALT_ANGLE = is_undef(ALT_ANGLE) ? 0 : ALT_ANGLE;
-CHECK_MODE = is_undef(CHECK_MODE) ? 0 : CHECK_MODE; // 0=upper, 1=lower
+CHECK_MODE = is_undef(CHECK_MODE) ? 0 : CHECK_MODE;
 WITH_TABLETOP = is_undef(WITH_TABLETOP) ? false : WITH_TABLETOP;
 CLEARANCE_MARGIN = is_undef(CLEARANCE_MARGIN) ? 0 : CLEARANCE_MARGIN;
 
@@ -74,7 +74,6 @@ module expanded_cylinder(d, h, z0, margin) {
 module conservative_lower_obstructions(tabletop = WITH_TABLETOP,
                                        margin = CLEARANCE_MARGIN) {
     m = max(0, margin);
-    // Full solid cylinders fill all real holes/cut-outs: conservative exterior.
     expanded_cylinder(AZ_BASE_D, AZ_BASE_PLATE_H, 0, m);
     expanded_cylinder(AZ_PEDESTAL_D, AZ_PEDESTAL_H, -AZ_PEDESTAL_H, m);
     expanded_cylinder(AZ_BASE_D, AZ_COVER_H + AZ_GLIDE_GAP, AZ_BASE_PLATE_H, m);
@@ -104,5 +103,12 @@ if (CHECK_MODE == 0)
     collision_upper();
 else if (CHECK_MODE == 1)
     collision_lower();
+else if (CHECK_MODE == 10)
+    payload_collision_body_local();
+else if (CHECK_MODE == 11)
+    fixed_upper_obstructions(az = 0);
+else if (CHECK_MODE == 12)
+    conservative_lower_obstructions(tabletop = WITH_TABLETOP,
+                                    margin = CLEARANCE_MARGIN);
 else
-    assert(false, "Unknown CHECK_MODE; expected 0 (upper) or 1 (lower)");
+    assert(false, "Unknown CHECK_MODE in motion_collision_check.scad");
