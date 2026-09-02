@@ -1,66 +1,93 @@
 # AltAz 28BYJ-48 OpenSCAD Mount
 
-Параметрична, 3D-печатаема **алт-азимутална монтировка** за телефон, малка камера или компактна оптика. Механиката използва по един 28BYJ-48 на ос, стандартните ULN2003 платки и допълнителен **20:1 редуктор** на всяка ос. По подразбиране редукторът е реализиран с печатаеми цилиндрични зъбни колела; има и параметричен шаблон за адаптер към готов външен 20:1 редуктор.
+Параметрична, 3D-печатаема **алт-азимутална монтировка** за телефон, малка камера или компактна оптика. И двете оси използват 28BYJ-48 и допълнителен печатаем **20:1** редуктор (`12T → 48T/12T → 60T`). Проектната цел е добре балансиран товар под 1 kg.
 
-> **Статус: v0.1.0 — инженерен прототип.** Размерите на конкретните мотори, принтера и реалния външен редуктор трябва да се измерят преди пълен печат. Товар под 1 kg е проектна цел само при добро балансиране и малък остатъчен момент около височинната ос.
-
-## Сглобяване и BOM
-
-`ASSEMBLY.md` е единственият източник на истина за реда на сглобяване, количествата печатни части, лагерите, валовете, гайките, винтовете и останалите непечатни компоненти. При всяка механична итерация той се актуализира заедно с OpenSCAD и visual QA.
-
-Виж: **[ASSEMBLY.md](ASSEMBLY.md)**.
+> **Статус: двуосен CAD прототип.** AZ, yoke, payload и моторизиран ALT drive вече имат отделни printable parts и virtual assemblies. Production print остава блокиран от реалните motor dimensions, printer fit calibration и физически fit tests. Виж `ASSEMBLY.md`.
 
 ## Основна конструкция
 
-- Две оси: азимут и височина.
-- По един 28BYJ-48 на ос.
-- Допълнителен 20:1 редуктор на всяка ос.
-- Вътрешният редуктор на 28BYJ-48 остава част от общото предавателно отношение.
-- Лагерни опори, които поемат товара вместо моторните валове.
-- Плъзгащ 1/4-20 UNC монтаж за балансиране на товара.
-- Долно стандартно 1/4-20 UNC гнездо за фотографски статив.
+- AZ: 28BYJ-48 + 20:1 reducer + 120 mm turntable.
+- ALT: два 608ZZ лагера, гладък Ø8×165 mm вал, 28BYJ-48 + 20:1 reducer от външната страна на drive arm.
+- Лагерите носят payload-а; motor shafts предават само въртящ момент.
+- Плъзгащ 1/4-20 UNC payload screw за балансиране.
+- 1/4-20 UNC tripod interface в основата.
+- Removable gearbox guards и отделни serviceable gears.
 
-## Стъпка по стъпка
+## Кинематика
 
-1. Дефиниране на изискванията и габаритите.
-2. Централизиране на параметрите в `src/config.scad`.
-3. Проектиране на неподвижната основа `src/parts/az_base.scad`.
-4. Азимутна ос и въртяща платформа.
-5. Вилка.
-6. Височинна ос и лагерни опори.
-7. Товарна люлка и универсална 1/4-20 платформа.
-8. Моторни стойки и интерфейс към 20:1 редукторите.
-9. Виртуално сглобяване в OpenSCAD и проверки за колизии.
-10. Калибрационни проби и подготовка за STL export.
-
-## Важното за приложените мотори
-
-Моделът започва от типичния механичен габарит на 28BYJ-48: тяло около Ø28 mm, вал Ø5 mm и около 35 mm между монтажните отвори. Клонингите се различават, затова всички основни размери са параметризирани и трябва да се проверят с шублер преди окончателен печат.
-
-## Номинална кинематика
-
-При условно `4096` half-steps на изходен оборот на 28BYJ-48 и външно `20:1`:
+За всяка ос:
 
 ```text
-81920 номинални half-steps / оборот на ос
+12T → 48T = 4:1
+12T → 60T = 5:1
+external reduction = 20:1
+```
+
+При условни `4096` half-steps на изходен оборот на 28BYJ-48:
+
+```text
+81920 nominal half-steps / axis revolution
 0.0043945° / half-step
 15.82 arcsec / half-step
 ```
 
-Това е **командна дискретност, не реална точност**. Вътрешният редуктор, луфтът и еластичността на печатаемите части ще доминират реалната грешка.
+Това е **command resolution, не механична точност**. Реалната грешка ще се определя от backlash, elastic compliance, internal 28BYJ gearing и print tolerances.
+
+## Visual QA
+
+Всяка механична итерация следва:
+
+```text
+SCAD
+  → full CGAL STL render
+  → Simple: yes + watertight + one connected printable component
+  → ISO/top/bottom/front/right renders
+  → sections where useful
+  → assembly/collision QA
+  → ASSEMBLY.md update
+```
+
+`tools/visual_qa.py` автоматизира individual-part QA. `src/assemblies/full_mount.scad` е текущият пълен виртуален assembly и поддържа command-line `ALT_ANGLE`, например:
+
+```bash
+openscad -D ALT_ANGLE=45 src/assemblies/full_mount.scad
+```
+
+ALT assembly е визуално проверен при `-20°`, `0°`, `45°` и `90°`.
 
 ## Структура
 
 ```text
-ASSEMBLY.md          механичен BOM и пълна последователност за сглобяване
-src/config.scad      общи параметри
-src/lib/             общи OpenSCAD модули
-src/parts/           отделни печатаеми части
-src/assemblies/      виртуални сглобки за collision/visual QA
-docs/                допълнителна инженерна документация
-tools/visual_qa.py   автоматизиран visual/mesh QA
+src/config.scad                 общи параметри
+src/lib/                        gears и reusable mechanical modules
+src/parts/                      отделни printable parts
+src/assemblies/                 subsystem и full-mount assemblies
+tools/visual_qa.py              headless mechanical visual QA
+ASSEMBLY.md                     hardware BOM + exact assembly sequence
+docs/visual-qa.md               QA policy
 ```
+
+## Важни непечатни части
+
+- 2× 28BYJ-48
+- 2× 608ZZ (8×22×7 mm)
+- Ø8×165 mm smooth steel shaft за ALT
+- M3/M4 fasteners, M8 AZ stud, 1/4-20 tripod/payload hardware
+- PTFE glide pads за AZ
+
+Точните количества, началните screw lengths и редът на сглобяване са в **`ASSEMBLY.md`** — той е механичният source of truth.
+
+## Преди production print
+
+Не печатай целия комплект наведнъж преди:
+
+1. измерване на конкретните 28BYJ-48;
+2. 608 / Ø8 shaft fit coupon;
+3. Double-D pinion test;
+4. captive-nut / M3 / M4 calibration;
+5. физически ALT output-hub/grub-screw test;
+6. окончателно решение за двустранната AZ compound axle support.
 
 ## Лиценз
 
-Хардуерният дизайн и OpenSCAD файловете се публикуват под CERN-OHL-S-2.0, съгласно `LICENSE` в това хранилище.
+Хардуерният дизайн и OpenSCAD файловете са под CERN-OHL-S-2.0, съгласно `LICENSE`.
