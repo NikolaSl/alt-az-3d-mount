@@ -47,10 +47,6 @@ jobs:
           cp node_modules/three/examples/jsm/loaders/STLLoader.js \
             site/vendor/three/addons/loaders/STLLoader.js
 
-          # Three r180 splits the browser build: three.module.js imports
-          # ./three.core.js. Both files must be deployed. The add-ons also
-          # import the bare package name "three"; rewrite those imports to the
-          # vendored module because GitHub Pages has no Node module resolver.
           python3 - <<'PY'
           import re
           from pathlib import Path
@@ -92,7 +88,7 @@ jobs:
 
           root = Path("src")
           files = []
-          entry_prefixes = ("parts/", "assemblies/", "adapters/")
+          entry_prefixes = ("parts/", "assemblies/", "adapters/", "calibration/")
 
           for path in sorted(root.rglob("*.scad")):
               rel = path.relative_to(root).as_posix()
@@ -121,9 +117,6 @@ jobs:
               json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
           )
 
-          # app.js itself is loaded with a commit query parameter by index.html.
-          # Add the same immutable cache key to its dynamically imported ESM
-          # dependencies so an Android browser cannot reuse an older add-on.
           commit = os.environ["COMMIT_SHA"]
           app_path = Path("site/app.js")
           app = app_path.read_text(encoding="utf-8")
@@ -142,6 +135,7 @@ jobs:
           test -s site/vendor/three/three.core.js
           test -s site/scad-manifest.json
           test -f site/repo-src/parts/az_base.scad
+          test -f site/repo-src/calibration/mechanical_fit_coupon.scad
 
           node --check site/app.js
           ! grep -R -n -E "from[[:space:]]+['\"]three['\"]" \
@@ -155,6 +149,8 @@ jobs:
           assert data["files"], "manifest has no SCAD files"
           assert data["entries"], "manifest has no renderable entries"
           assert any(x["path"] == "parts/az_base.scad" for x in data["entries"])
+          assert any(x["path"] == "calibration/mechanical_fit_coupon.scad" for x in data["entries"])
+          assert any(x["path"] == "calibration/byj48_fit_coupon.scad" for x in data["entries"])
 
           app = Path("site/app.js").read_text()
           commit = data["commit"]
