@@ -4,32 +4,40 @@ This file is the short bootstrap index for resuming the project from a fresh cha
 
 ## Current phase
 
-**Dual-axis CAD prototype complete; physical fit calibration is now the main production-print gate.**
+**Core mechanical CAD is complete for both tripod and tabletop modes; physical fit calibration and functional dry-fit are now the production-print gate.**
 
 The current architecture is an Alt-Az mount for a balanced payload below 1 kg using two 28BYJ-48 stepper motors and an additional printable 20:1 reducer on each axis.
 
-## Current trusted virtual assembly
+## Current trusted virtual assemblies
 
-Primary full assembly entry point:
+Primary tripod-mode full assembly:
 
 ```text
 src/assemblies/full_mount.scad
 ```
 
-Important subsystem entry points:
+Primary flat-surface full assembly:
+
+```text
+src/assemblies/tabletop_full_mount.scad
+```
+
+Important subsystem/context entry points:
 
 ```text
 src/assemblies/az_stage.scad
 src/assemblies/yoke_stage.scad
 src/assemblies/payload_stage.scad
 src/assemblies/alt_drive_stage.scad
+src/assemblies/tabletop_base_context.scad
 ```
 
 The full mount supports `ALT_ANGLE` for motion inspection. Existing documented visual QA sampled at least `-20°`, `0°`, `45°` and `90°`.
 
 ## Completed CAD/process subsystems
 
-- AZ base and tripod interface.
+- Removable Ø190 mm tabletop base with shallow pedestal locator, recessed shared 1/4-20 attachment and four rubber-foot recesses.
+- AZ base and shared tripod/tabletop interface.
 - AZ printable 20:1 reducer.
 - AZ rotating turntable.
 - Yoke base bridge and two arms.
@@ -41,7 +49,7 @@ The full mount supports `ALT_ANGLE` for motion inspection. Existing documented v
 - ALT printable 20:1 reducer.
 - ALT output spacer/hub coupling.
 - ALT gearbox guard.
-- Full two-axis virtual assembly.
+- Full two-axis virtual assemblies for tripod and tabletop modes.
 - Repeatable per-part and assembly visual QA tooling.
 - GitHub Pages browser validator using OpenSCAD WebAssembly + Three.js.
 - Live mechanical assembly guide and hardware BOM in `ASSEMBLY.md`.
@@ -51,6 +59,7 @@ The full mount supports `ALT_ANGLE` for motion inspection. Existing documented v
 - Physical calibration procedure in `CALIBRATION.md`.
 - Three browser-renderable calibration coupons for bearings/shaft, fasteners/nut traps and the 28BYJ-48 mount/Double-D shaft.
 - Full CGAL/mesh/visual QA of all three calibration coupons documented in `docs/calibration-qa.md`.
+- Full CGAL/mesh/visual QA of `P-TABLETOP-BASE`: `Simple: yes`, watertight, one connected component, 190×190×8 mm; context render against the actual `az_base` was also inspected.
 
 ## Current source-of-truth documents
 
@@ -70,7 +79,7 @@ Read in this order when resuming work:
 12. `docs/calibration-qa.md`
 13. current relevant assembly and neighboring part sources
 
-When changing geometry, use the stable part IDs from `PARTS.md` and interface IDs from `INTERFACES.md` in reasoning/commit notes where practical. This makes recursive backtracking and revalidation traceable across chats.
+When changing geometry, use the stable part IDs from `PARTS.md` and interface IDs from `INTERFACES.md` in reasoning/commit notes where practical.
 
 ## Current HOLD / VERIFY items
 
@@ -86,7 +95,7 @@ The dedicated `src/calibration/byj48_fit_coupon.scad` is ready to test both the 
 
 Calibrate printer/material-dependent `FIT` / `PRESS_FIT`, screw clearances, captive nuts and bearing pockets before the complete print set.
 
-The ready-to-print coupons are:
+Ready-to-print coupons:
 
 ```text
 src/calibration/mechanical_fit_coupon.scad
@@ -108,6 +117,10 @@ Physically verify motor shaft / Double-D pinion, M3 shoulder axle, Ø8 output bo
 
 Primary contracts: `I-021`, `I-023`, `I-025`.
 
+### VERIFY-TABLETOP-STABILITY
+
+The new Ø190 tabletop base is CAD-integrated through `I-028`, but stability depends on the actual payload CG, rubber feet and surface. Verify real overturn margin before unattended use at the project maximum load.
+
 ## Physical validation before production print
 
 At minimum:
@@ -118,8 +131,10 @@ At minimum:
 - select verified 608, shaft, M3/M4 and captive-nut fits;
 - select the verified Double-D shaft clearance;
 - feed results into `src/config.scad` only through the interface/invalidation procedure;
+- print/dry-fit the tabletop shared 1/4-20 interface if tabletop mode will be used;
 - print/dry-fit the AZ compound axle support and ALT output stack;
-- dry-fit the complete mechanical assembly before threadlocker/final fastener-length freeze.
+- dry-fit the complete mechanical assembly before threadlocker/final fastener-length freeze;
+- verify balance and tabletop stability with the real payload.
 
 After a physical result changes a shared parameter, use `INTERFACES.md` to identify what is invalidated, mark affected entries in `PARTS.md`, re-run QA, then update `ASSEMBLY.md` and this checkpoint.
 
@@ -127,42 +142,54 @@ After a physical result changes a shared parameter, use `INTERFACES.md` to ident
 
 GitHub Pages deploys the current `src/` OpenSCAD tree and generates a render manifest automatically on source/site changes. In a normal browser, including phone/tablet, the user can select a printable part, assembly or calibration coupon, run OpenSCAD WebAssembly locally, inspect the STL interactively and open the exact repository source used.
 
+For flat-surface review select:
+
+```text
+assemblies/tabletop_full_mount.scad
+```
+
+For the exact base interface select:
+
+```text
+assemblies/tabletop_base_context.scad
+```
+
 The mobile page links directly to current project state, parts ledger, interface map, assembly/BOM, calibration procedure, repository contract and design protocol.
 
-## Remaining CAD work not blocked by measurements
+## What remains to finish the mechanical product
 
-The core two-axis mechanism is modeled. The main remaining geometry that can be completed without measured motor fits is packaging/accessory work, especially:
+The design is no longer blocked by missing major CAD parts. The remaining work is primarily verification and production hardening:
 
-1. a stable removable tabletop adapter/base for the original flat-surface use case;
-2. optional cable routing/strain relief once controller placement is decided;
-3. optional electronics/ULN2003/controller carrier if electronics are kept in the mechanical project;
-4. final print-orientation/production-set organization after physical fits are frozen.
+1. physical measurements and calibration coupons;
+2. propagation of measured values through shared parameters and affected interfaces;
+3. physical AZ axle and ALT drive-stack fit tests;
+4. complete dry-fit and motion/balance tests;
+5. tabletop stability test if that mode is used;
+6. re-QA after any measured-parameter changes;
+7. freeze BOM/fastener lengths and generate the final production print set.
 
-The tabletop adapter is the next recommended non-blocked mechanical part because the original requirement included operation on a normal flat surface and the current `az_base` is primarily optimized for a 1/4-20 tripod interface.
+Optional follow-on scope, not required for a mechanically complete mount:
+
+- cable routing/strain relief;
+- ULN2003/controller/electronics carrier;
+- firmware/controller work;
+- dedicated phone/optic adapter beyond the universal 1/4-20 payload interface.
 
 ## Next recommended engineering sequence
 
-Two tracks can proceed in parallel:
-
 ```text
-PHYSICAL TRACK
-measure hardware
-→ print calibration coupons
-→ report fit results
-→ update config/interface states
-→ re-QA affected chain
-→ functional dry-fit
-→ production print freeze
-
-CAD TRACK
-P-TABLETOP-BASE
-→ per-part QA
-→ integrate with full mount
-→ assembly/stability review
-→ update PARTS / INTERFACES / ASSEMBLY / BOM / browser site
+measure real hardware
+→ print the 3 calibration coupons
+→ report measurements + chosen fits
+→ update config + mark invalidated interfaces/parts
+→ re-QA affected dependency chain
+→ print functional AZ/ALT interface parts
+→ dry-fit full mount
+→ balance + motion + tabletop stability tests
+→ freeze production BOM/print set
 ```
 
-The next CAD part should therefore be the removable tabletop base unless the user explicitly prioritizes electronics or another accessory.
+Until the physical results arrive, additional geometry should be treated as optional accessory development rather than as a blocker for the core mount.
 
 ## Continuity invariant
 
