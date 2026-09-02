@@ -1,8 +1,10 @@
 include <../config.scad>
-use <az_yoke.scad>
+use <az_stage.scad>
+use <yoke_stage.scad>
 use <payload_stage.scad>
 use <alt_drive_stage.scad>
 
+AZ_ANGLE = is_undef(AZ_ANGLE) ? 0 : AZ_ANGLE;
 ALT_ANGLE = is_undef(ALT_ANGLE) ? 0 : ALT_ANGLE;
 
 module alt_drive_to_world(axis_z) {
@@ -17,24 +19,34 @@ module alt_drive_to_world(axis_z) {
 }
 
 module full_mount(altitude_angle = ALT_ANGLE,
+                  azimuth_angle = AZ_ANGLE,
                   show_alt_guard = true) {
-    az_yoke();
+    // The lower AZ stage remains fixed. The structural upper assembly rotates
+    // around the common Z axis. The turntable's outer envelope is rotationally
+    // symmetric; internal gear tooth phase is intentionally outside this
+    // structural motion-QA pose model.
+    az_stage();
 
     yoke_stage_z = AZ_BASE_PLATE_H + AZ_COVER_H + AZ_GLIDE_GAP +
                    AZ_TURNTABLE_H;
     slot_floor = YOKE_BRIDGE_H - YOKE_SLOT_DEPTH;
     altitude_axis_z = yoke_stage_z + slot_floor + YOKE_AXIS_Z;
 
-    // Payload/clamps rotate around the X-axis together with the steel ALT shaft.
-    translate([0, 0, altitude_axis_z])
-        rotate([altitude_angle, 0, 0]) payload_stage();
+    rotate([0, 0, azimuth_angle]) {
+        translate([0, 0, yoke_stage_z])
+            yoke_stage();
 
-    // The gearbox is fixed to the outside face of yoke_arm_drive.
-    alt_drive_to_world(altitude_axis_z)
-        alt_drive_stage(show_guard = show_alt_guard,
-                        show_arm = false,
-                        show_motor = true,
-                        show_shaft = false);
+        // Payload/clamps rotate around the X-axis together with the steel ALT shaft.
+        translate([0, 0, altitude_axis_z])
+            rotate([altitude_angle, 0, 0]) payload_stage();
+
+        // The gearbox is fixed to the outside face of yoke_arm_drive and follows AZ.
+        alt_drive_to_world(altitude_axis_z)
+            alt_drive_stage(show_guard = show_alt_guard,
+                            show_arm = false,
+                            show_motor = true,
+                            show_shaft = false);
+    }
 }
 
 full_mount();
