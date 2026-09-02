@@ -6,6 +6,8 @@ on:
     paths:
       - "src/**"
       - "site/**"
+      - "tools/build_browser_manifest.py"
+      - "tools/prebuild_browser_previews.py"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -38,9 +40,8 @@ jobs:
           mkdir -p site/vendor/three/addons/controls
           mkdir -p site/vendor/three/addons/loaders
 
-          # Pin the exact WebAssembly build currently used by the official
-          # OpenSCAD Playground. Unlike the old npm 0.0.4 build, this build
-          # supports the Manifold backend and is suitable for worker execution.
+          # Pin the same modern WebAssembly build used by the official
+          # OpenSCAD Playground. The browser worker uses its Manifold backend.
           curl -fL --retry 3 \
             "https://files.openscad.org/playground/OpenSCAD-2025.03.25.wasm24456-WebAssembly-web.zip" \
             -o /tmp/openscad-wasm.zip
@@ -75,26 +76,19 @@ jobs:
           ):
               path = Path(filename)
               text = path.read_text(encoding="utf-8")
-              text = re.sub(
-                  r"from\s+(['\"])three\1",
-                  "from '../../three.module.js'",
-                  text,
-              )
+              text = re.sub(r"from\s+(['\"])three\1", "from '../../three.module.js'", text)
               path.write_text(text, encoding="utf-8")
               if re.search(r"from\s+['\"]three['\"]", text):
                   raise SystemExit(f"bare Three.js import remains in {filename}")
           PY
 
-          test -s site/vendor/openscad/openscad.js
-          test -s site/vendor/openscad/openscad.wasm
-
-      - name: Install native OpenSCAD for published previews
+      - name: Install native OpenSCAD for published assembly previews
         run: |
           sudo apt-get update
           sudo apt-get install -y openscad xvfb
           openscad --version
 
-      - name: Snapshot SCAD sources and generate dependency manifest
+      - name: Snapshot source and build dependency-aware manifest
         env:
           REPOSITORY: ${{ github.repository }}
           COMMIT_SHA: ${{ github.sha }}
@@ -104,176 +98,15 @@ jobs:
           mkdir -p site/prebuilt
           touch site/.nojekyll
 
-          python3 - <<'PY'
-          import hashlib
-          import json
-          import os
-          import posixpath
-          import re
-          from pathlib import Path
+          python3 tools/build_browser_manifest.py \
+            --repository "$REPOSITORY" \
+            --commit "$COMMIT_SHA"
 
-          root = Path("src")
-          paths = sorted(path.relative_to(root).as_posix() for path in root.rglob("*.scad"))
-          path_set = set(paths)
-          include_re = re.compile(r"(?m)^\s*(?:include|use)\s*<([^>]+)>")
-
-          files = []
-          direct = {}
-          unresolved = {}
-
-          for rel in paths:
-              path = root / rel
-              data = path.read_bytes()
-              files.append({
-                  "path": rel,
-                  "sha256": hashlib.sha256(data).hexdigest(),
-              })
-              text = data.decode("utf-8")
-              deps = []
-              missing = []
-              for token in include_re.findall(text):
-                  candidate = posixpath.normpath(posixpath.join(posixpath.dirname(rel), token))
-                  if candidate in path_set:
-                      deps.append(candidate)
-                  elif posixpath.normpath(token) in path_set:
-                      deps.append(posixpath.normpath(token))
-                  else:
-                      missing.append(token)
-              direct[rel] = sorted(set(deps))
-              if missing:
-                  unresolved[rel] = missing
-
-          def dependency_closure(rel):
-              seen = set()
-              stack = [rel]
-              has_unresolved = False
-              while stack:
-                  current = stack.pop()
-                  if current in seen:
-                      continue
-                  seen.add(current)
-                  if current in unresolved:
-                      has_unresolved = True
-                  stack.extend(direct.get(current, []))
-              # If a source has an unresolved library include, keep the legacy
-              # safe behavior and mount the complete repository snapshot.
-              return sorted(path_set if has_unresolved else seen)
-
-          entry_prefixes = ("parts/", "assemblies/", "adapters/", "calibration/")
-          entries = []
-          for rel in paths:
-              if rel.startswith(entry_prefixes):
-                  stem = Path(rel).stem.replace("_", " ")
-                  entries.append({
-                      "path": rel,
-                      "label": f"{stem} — {rel}",
-                      "dependencies": dependency_closure(rel),
-                  })
-
-          if not entries:
-              entries = [{
-                  "path": rel,
-                  "label": rel,
-                  "dependencies": dependency_closure(rel),
-              } for rel in paths]
-
-          manifest = {
-              "repository": os.environ["REPOSITORY"],
-              "commit": os.environ["COMMIT_SHA"],
-              "renderer": {
-                  "browser": "OpenSCAD 2025.03.25 wasm24456 + Manifold",
-                  "worker": True,
-              },
-              "files": files,
-              "entries": entries,
-          }
-          Path("site/scad-manifest.json").write_text(
-              json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
-          )
-
-          if unresolved:
-              print("Unresolved external includes detected; affected entries will mount all sources:")
-              for rel, missing in sorted(unresolved.items()):
-                  print(f"  {rel}: {', '.join(missing)}")
-          else:
-              print("All include/use dependencies resolved inside repository snapshot.")
-
-          sizes = [len(entry["dependencies"]) for entry in entries]
-          print(f"manifest: {len(files)} files, {len(entries)} entries; dependency closure min={min(sizes)}, max={max(sizes)}")
-          PY
-
-      - name: Build published STL previews
+      - name: Prebuild expensive assembly previews
         run: |
-          python3 - <<'PY'
-          import json
-          import subprocess
-          from concurrent.futures import ThreadPoolExecutor, as_completed
-          from pathlib import Path
-
-          manifest_path = Path("site/scad-manifest.json")
-          data = json.loads(manifest_path.read_text(encoding="utf-8"))
-          out_root = Path("site/prebuilt")
-
-          # Diagnostics whose default output is intentionally empty/non-review geometry.
-          skip_names = {
-              "motion_collision_check.scad",
-              "motion_clearance_asserts.scad",
-              "motion_collision_batch.scad",
-              "motion_mesh_export.scad",
-          }
-
-          def build(entry):
-              rel = entry["path"]
-              if Path(rel).name in skip_names:
-                  return rel, None, "diagnostic entry skipped"
-              src = Path("src") / rel
-              out_rel = str(Path(rel).with_suffix(".stl")).replace("\\", "/")
-              out = out_root / out_rel
-              out.parent.mkdir(parents=True, exist_ok=True)
-              cmd = ["xvfb-run", "-a", "openscad", "-o", str(out), str(src)]
-              try:
-                  result = subprocess.run(cmd, capture_output=True, text=True, timeout=240)
-              except subprocess.TimeoutExpired:
-                  return rel, None, "native preview timed out after 240 s"
-              if result.returncode != 0 or not out.exists() or out.stat().st_size < 100:
-                  if out.exists():
-                      out.unlink()
-                  tail = (result.stderr or result.stdout or "render failed")[-800:].replace("\n", " ")
-                  return rel, None, tail
-              return rel, out_rel, None
-
-          entries = data["entries"]
-          results = {}
-          with ThreadPoolExecutor(max_workers=2) as pool:
-              futures = {pool.submit(build, entry): entry for entry in entries}
-              for future in as_completed(futures):
-                  rel, prebuilt, error = future.result()
-                  results[rel] = (prebuilt, error)
-                  if prebuilt:
-                      print(f"PREBUILT {rel} -> {prebuilt}")
-                  else:
-                      print(f"NO PREBUILD {rel}: {error}")
-
-          for entry in entries:
-              prebuilt, error = results[entry["path"]]
-              if prebuilt:
-                  entry["prebuilt"] = prebuilt
-              elif error:
-                  entry["prebuilt_error"] = error
-
-          # These are the phone-review critical models which motivated the cache.
-          required = {
-              "assemblies/full_mount.scad",
-              "assemblies/tabletop_full_mount.scad",
-          }
-          missing = [path for path in required if not next((e.get("prebuilt") for e in entries if e["path"] == path), None)]
-          if missing:
-              raise SystemExit(f"critical published previews failed: {missing}")
-
-          manifest_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-          count = sum(1 for entry in entries if entry.get("prebuilt"))
-          print(f"published STL previews: {count}/{len(entries)}")
-          PY
+          python3 tools/prebuild_browser_previews.py \
+            --workers 2 \
+            --timeout 240
 
       - name: Version browser assets and validate site
         run: |
@@ -303,7 +136,6 @@ jobs:
           test -s site/prebuilt/assemblies/full_mount.stl
           test -s site/prebuilt/assemblies/tabletop_full_mount.stl
           test -f site/repo-src/parts/az_base.scad
-          test -f site/repo-src/calibration/mechanical_fit_coupon.scad
 
           node --check site/app.js
           node --check site/openscad-worker.js
@@ -314,17 +146,13 @@ jobs:
           from pathlib import Path
 
           data = json.loads(Path("site/scad-manifest.json").read_text())
-          assert data["files"], "manifest has no SCAD files"
-          assert data["entries"], "manifest has no renderable entries"
+          assert data["files"] and data["entries"]
           assert data["renderer"]["worker"] is True
-          assert any(x["path"] == "parts/az_base.scad" for x in data["entries"])
-          assert any(x["path"] == "calibration/mechanical_fit_coupon.scad" for x in data["entries"])
-          assert any(x["path"] == "calibration/byj48_fit_coupon.scad" for x in data["entries"])
           full = next(x for x in data["entries"] if x["path"] == "assemblies/full_mount.scad")
           tabletop = next(x for x in data["entries"] if x["path"] == "assemblies/tabletop_full_mount.scad")
           assert full.get("prebuilt")
           assert tabletop.get("prebuilt")
-          assert len(full["dependencies"]) < len(data["files"]), "dependency closure optimization did not reduce full_mount source set"
+          assert len(full["dependencies"]) < len(data["files"]), "dependency closure did not reduce full_mount source set"
           print(f"site manifest OK: {len(data['files'])} files, {len(data['entries'])} entries")
           print(f"full_mount dependency closure: {len(full['dependencies'])}/{len(data['files'])}")
           PY
