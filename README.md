@@ -4,6 +4,17 @@
 
 > **Статус: двуосен CAD прототип.** AZ, yoke, payload и моторизиран ALT drive вече имат отделни printable parts и virtual assemblies. Production print остава блокиран от реалните motor dimensions, printer fit calibration и физически fit tests. Виж `ASSEMBLY.md`.
 
+## Resume / mobile-review entry points
+
+Този repository е постоянната инженерна памет на проекта; историята на чата не е source of truth. При нов чат или ново устройство започни от:
+
+1. [`REPOSITORY_CONTRACT.md`](REPOSITORY_CONTRACT.md) — задължителното правило за continuity, integration, browser review и live BOM/assembly;
+2. [`DESIGN_PROTOCOL.md`](DESIGN_PROTOCOL.md) — общият алгоритъм за параметрично проектиране, QA и controlled backtracking;
+3. [`PROJECT_STATE.md`](PROJECT_STATE.md) — кратък текущ checkpoint за възстановяване на работата;
+4. [`ASSEMBLY.md`](ASSEMBLY.md) — текущ printable list, non-printed BOM и пълна последователност за физическо сглобяване.
+
+GitHub Pages browser validator публикува `src/` и позволява OpenSCAD WebAssembly render + интерактивен STL review от обикновен телефон/таблет. Browser publication е част от integration gate за нови части и subsystem assemblies.
+
 ## Основна конструкция
 
 - AZ: 28BYJ-48 + 20:1 reducer + 120 mm turntable.
