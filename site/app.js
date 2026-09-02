@@ -1,18 +1,29 @@
-const modelSelect = document.querySelector("#modelSelect");
-const renderButton = document.querySelector("#renderButton");
-const downloadButton = document.querySelector("#downloadButton");
-const sourceLink = document.querySelector("#sourceLink");
-const statusEl = document.querySelector("#status");
-const sourceCode = document.querySelector("#sourceCode");
-const commitInfo = document.querySelector("#commitInfo");
-const meshInfo = document.querySelector("#meshInfo");
-const consoleLog = document.querySelector("#consoleLog");
-const viewerEl = document.querySelector("#viewer");
+const modelSelect = document.querySelector('#modelSelect');
+const renderButton = document.querySelector('#renderButton');
+const cancelButton = document.querySelector('#cancelButton');
+const downloadButton = document.querySelector('#downloadButton');
+const sourceLink = document.querySelector('#sourceLink');
+const statusEl = document.querySelector('#status');
+const sourceCode = document.querySelector('#sourceCode');
+const commitInfo = document.querySelector('#commitInfo');
+const meshInfo = document.querySelector('#meshInfo');
+const consoleLog = document.querySelector('#consoleLog');
+const viewerEl = document.querySelector('#viewer');
+const progressPanel = document.querySelector('#renderProgress');
+const progressBar = document.querySelector('#progressBar');
+const progressStage = document.querySelector('#progressStage');
+const progressDetail = document.querySelector('#progressDetail');
+const progressElapsed = document.querySelector('#progressElapsed');
 
 let manifest;
-let scad;
-let scadLoading;
 let generatedStl;
+let activeWorker;
+let activeJobId = 0;
+let renderStartedAt = 0;
+let elapsedTimer;
+let renderPhase = '';
+let renderDetail = '';
+let selectionSerial = 0;
 
 let THREE;
 let OrbitControls;
@@ -31,55 +42,80 @@ function setStatus(text) {
 }
 
 function log(text, isError = false) {
-  const line = `${isError ? "ERR " : ""}${text}`;
+  const line = `${isError ? 'ERR ' : ''}${text}`;
   consoleLog.textContent += `${line}\n`;
   consoleLog.scrollTop = consoleLog.scrollHeight;
 }
 
 function clearLog() {
-  consoleLog.textContent = "";
+  consoleLog.textContent = '';
 }
 
-function ensureDirectory(fs, path) {
-  const parts = path.split("/").filter(Boolean);
-  let current = "";
-  for (const part of parts) {
-    current += `/${part}`;
-    try {
-      fs.mkdir(current);
-    } catch {
-      // Directory already exists.
-    }
+function formatElapsed(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function setProgress({ phase, progress, detail }) {
+  renderPhase = phase || renderPhase;
+  renderDetail = detail || renderDetail;
+  progressPanel.hidden = false;
+  progressStage.textContent = renderPhase || 'Working';
+  progressDetail.textContent = renderDetail || '';
+
+  if (progress == null) {
+    progressBar.removeAttribute('value');
+  } else {
+    progressBar.value = Math.max(0, Math.min(100, progress));
   }
 }
 
+function startElapsedClock() {
+  stopElapsedClock();
+  renderStartedAt = performance.now();
+  const tick = () => {
+    const elapsed = performance.now() - renderStartedAt;
+    progressElapsed.textContent = formatElapsed(elapsed);
+    if (activeWorker && renderPhase === 'render') {
+      setStatus(`Rendering in background worker… ${formatElapsed(elapsed)} elapsed. The page remains usable; Cancel is available.`);
+    }
+  };
+  tick();
+  elapsedTimer = setInterval(tick, 1000);
+}
+
+function stopElapsedClock() {
+  if (elapsedTimer) clearInterval(elapsedTimer);
+  elapsedTimer = undefined;
+}
+
 async function sha256Hex(bytes) {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
 }
 
 async function fetchRepoFile(file) {
   const url = new URL(`./repo-src/${file.path}`, import.meta.url);
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await fetch(url, { cache: 'no-store' });
   if (!response.ok) throw new Error(`Cannot load ${file.path}: HTTP ${response.status}`);
   const buffer = await response.arrayBuffer();
   const digest = await sha256Hex(buffer);
-  if (digest !== file.sha256) {
-    throw new Error(`SHA-256 mismatch for ${file.path}`);
-  }
+  if (digest !== file.sha256) throw new Error(`SHA-256 mismatch for ${file.path}`);
   return new Uint8Array(buffer);
 }
 
 async function loadManifest() {
-  setStatus("Loading repository manifest…");
-  const url = new URL("./scad-manifest.json", import.meta.url);
-  const response = await fetch(url, { cache: "no-store" });
+  setStatus('Loading repository manifest…');
+  const url = new URL('./scad-manifest.json', import.meta.url);
+  const response = await fetch(url, { cache: 'no-store' });
   if (!response.ok) throw new Error(`Cannot load manifest: HTTP ${response.status}`);
   const data = await response.json();
   if (!Array.isArray(data.files) || !Array.isArray(data.entries)) {
-    throw new Error("Invalid repository manifest format");
+    throw new Error('Invalid repository manifest format');
   }
-  if (!data.entries.length) throw new Error("No renderable SCAD entry points were found.");
+  if (!data.entries.length) throw new Error('No renderable SCAD entry points were found.');
   manifest = data;
   log(`Manifest loaded: ${manifest.files.length} SCAD files, ${manifest.entries.length} entry point(s).`);
 }
@@ -88,15 +124,31 @@ function selectedEntry() {
   return manifest?.entries.find(entry => entry.path === modelSelect.value);
 }
 
+function filesForEntry(entry) {
+  const requested = Array.isArray(entry.dependencies) && entry.dependencies.length
+    ? entry.dependencies
+    : manifest.files.map(file => file.path);
+  const wanted = new Set([entry.path, ...requested]);
+  const files = manifest.files.filter(file => wanted.has(file.path));
+  if (!files.some(file => file.path === entry.path)) {
+    throw new Error(`Manifest has no source record for ${entry.path}`);
+  }
+  return files;
+}
+
 async function showSelectedSource() {
+  const serial = ++selectionSerial;
   const entry = selectedEntry();
   if (!entry) return;
+
+  if (activeWorker) cancelRender('Selection changed; previous background render cancelled.');
 
   const file = manifest.files.find(item => item.path === entry.path);
   if (!file) throw new Error(`Manifest entry ${entry.path} has no source file record`);
 
   setStatus(`Loading and verifying ${entry.path}…`);
   const bytes = await fetchRepoFile(file);
+  if (serial !== selectionSerial) return;
   sourceCode.textContent = new TextDecoder().decode(bytes);
 
   const commit = manifest.commit;
@@ -104,14 +156,22 @@ async function showSelectedSource() {
   commitInfo.textContent = commit.slice(0, 8);
   generatedStl = undefined;
   downloadButton.disabled = true;
-  meshInfo.textContent = "not rendered";
-  setStatus(`Selected ${entry.path}. Source SHA-256 verified.`);
+  meshInfo.textContent = 'not rendered';
+  progressPanel.hidden = true;
+  progressElapsed.textContent = '0:00';
+
+  const dependencyCount = filesForEntry(entry).length;
+  setStatus(`Selected ${entry.path}. Source verified; ${dependencyCount} required SCAD file(s) in dependency closure.`);
+
+  if (entry.prebuilt) {
+    await loadPublishedStl(entry, serial);
+  }
 }
 
 async function loadViewerModules() {
-  const threeUrl = new URL("./vendor/three/three.module.js", import.meta.url).href;
-  const controlsUrl = new URL("./vendor/three/addons/controls/OrbitControls.js", import.meta.url).href;
-  const loaderUrl = new URL("./vendor/three/addons/loaders/STLLoader.js", import.meta.url).href;
+  const threeUrl = new URL('./vendor/three/three.module.js', import.meta.url).href;
+  const controlsUrl = new URL('./vendor/three/addons/controls/OrbitControls.js', import.meta.url).href;
+  const loaderUrl = new URL('./vendor/three/addons/loaders/STLLoader.js', import.meta.url).href;
 
   const [threeModule, controlsModule, loaderModule] = await Promise.all([
     import(threeUrl),
@@ -145,7 +205,7 @@ async function initViewer() {
   if (viewerLoading) return viewerLoading;
 
   viewerLoading = (async () => {
-    setStatus("Loading 3D viewer modules…");
+    setStatus('Loading 3D viewer modules…');
     await loadViewerModules();
 
     scene = new THREE.Scene();
@@ -174,56 +234,13 @@ async function initViewer() {
     viewerReady = true;
     resizeViewer();
     animate();
-    log("Three.js 3D viewer initialized.");
+    log('Three.js 3D viewer initialized.');
   })().catch(error => {
     viewerLoading = undefined;
     throw error;
   });
 
   return viewerLoading;
-}
-
-async function loadOpenSCAD() {
-  if (scad) return scad;
-  if (scadLoading) return scadLoading;
-
-  scadLoading = (async () => {
-    setStatus("Loading OpenSCAD WebAssembly runtime… first load is about 13 MB.");
-    const moduleUrl = new URL("./vendor/openscad.js", import.meta.url).href;
-    const wasmModule = await import(moduleUrl);
-    if (typeof wasmModule.createOpenSCAD !== "function") {
-      throw new Error("OpenSCAD WebAssembly module does not export createOpenSCAD()");
-    }
-
-    const api = await wasmModule.createOpenSCAD({
-      print: text => log(text),
-      printErr: text => log(text, true)
-    });
-    const instance = api.getInstance();
-    if (!instance?.FS || typeof instance.callMain !== "function") {
-      throw new Error("OpenSCAD WebAssembly runtime did not initialize correctly");
-    }
-
-    ensureDirectory(instance.FS, "/workspace/src");
-    setStatus(`Verifying and mounting ${manifest.files.length} repository SCAD files…`);
-
-    for (const file of manifest.files) {
-      const bytes = await fetchRepoFile(file);
-      const target = `/workspace/src/${file.path}`;
-      const parent = target.slice(0, target.lastIndexOf("/"));
-      ensureDirectory(instance.FS, parent);
-      instance.FS.writeFile(target, bytes);
-    }
-
-    scad = instance;
-    setStatus(`OpenSCAD ready. Source snapshot verified against commit ${manifest.commit.slice(0, 8)}.`);
-    return instance;
-  })().catch(error => {
-    scadLoading = undefined;
-    throw error;
-  });
-
-  return scadLoading;
 }
 
 function removeCurrentMesh() {
@@ -235,7 +252,7 @@ function removeCurrentMesh() {
 }
 
 function displayStl(bytes) {
-  if (!viewerReady) throw new Error("3D viewer is not available");
+  if (!viewerReady) throw new Error('3D viewer is not available');
 
   const exactBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
   const geometry = new STLLoader().parse(exactBuffer);
@@ -276,58 +293,152 @@ function displayStl(bytes) {
   meshInfo.textContent = `${originalSize.x.toFixed(1)} × ${originalSize.y.toFixed(1)} × ${originalSize.z.toFixed(1)} mm · ${Math.round(triangles).toLocaleString()} triangles`;
 }
 
+async function loadPublishedStl(entry, serial = selectionSerial) {
+  if (!entry.prebuilt) return false;
+  try {
+    setStatus(`Loading published STL for ${entry.path}…`);
+    const url = new URL(`./prebuilt/${entry.prebuilt}`, import.meta.url);
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const buffer = await response.arrayBuffer();
+    if (serial !== selectionSerial || entry.path !== modelSelect.value) return false;
+
+    generatedStl = new Uint8Array(buffer);
+    if (!generatedStl.length) throw new Error('published STL is empty');
+    downloadButton.disabled = false;
+    await initViewer();
+    displayStl(generatedStl);
+    meshInfo.textContent += ' · published CI render';
+    setStatus(`Published render loaded instantly from commit ${manifest.commit.slice(0, 8)}. Use “Re-render in browser” only when you need an independent WebAssembly compile.`);
+    return true;
+  } catch (error) {
+    log(`Published STL unavailable for ${entry.path}: ${error.message}`, true);
+    setStatus(`Published preview unavailable; use “Re-render in browser”. (${error.message})`);
+    return false;
+  }
+}
+
+function finishWorker() {
+  if (activeWorker) activeWorker.terminate();
+  activeWorker = undefined;
+  stopElapsedClock();
+  renderButton.disabled = false;
+  cancelButton.disabled = true;
+}
+
+function cancelRender(message = 'Background render cancelled.') {
+  if (!activeWorker) return;
+  finishWorker();
+  setProgress({ phase: 'cancelled', progress: 0, detail: message });
+  progressElapsed.textContent = formatElapsed(performance.now() - renderStartedAt);
+  setStatus(message);
+  log(message);
+}
+
 async function renderSelected() {
   const entry = selectedEntry();
   if (!entry) return;
 
+  if (activeWorker) cancelRender('Previous render cancelled before starting a new one.');
+
   renderButton.disabled = true;
+  cancelButton.disabled = false;
   downloadButton.disabled = true;
   clearLog();
 
-  try {
-    const instance = await loadOpenSCAD();
-    const output = "/output.stl";
-    try { instance.FS.unlink(output); } catch { /* no previous output */ }
+  const jobId = ++activeJobId;
+  const workerUrl = new URL(`./openscad-worker.js?v=${encodeURIComponent(manifest.commit)}`, import.meta.url);
+  const worker = new Worker(workerUrl, { type: 'module', name: 'openscad-renderer' });
+  activeWorker = worker;
+  startElapsedClock();
+  setProgress({
+    phase: 'starting',
+    progress: 2,
+    detail: 'Starting background OpenSCAD worker. The UI will remain responsive.'
+  });
+  setStatus('Starting background OpenSCAD render…');
 
-    setStatus(`Rendering ${entry.path} with OpenSCAD WebAssembly…`);
-    const exitCode = instance.callMain([
-      `/workspace/src/${entry.path}`,
-      "-o",
-      output
-    ]);
-
-    if (typeof exitCode === "number" && exitCode !== 0) {
-      throw new Error(`OpenSCAD returned exit code ${exitCode}`);
-    }
-
-    generatedStl = instance.FS.readFile(output);
-    if (!generatedStl?.length) throw new Error("OpenSCAD produced an empty STL file");
-    downloadButton.disabled = false;
-
-    try {
-      await initViewer();
-      displayStl(generatedStl);
-      setStatus(`Rendered and displayed ${entry.path} from repository commit ${manifest.commit.slice(0, 8)}.`);
-    } catch (viewerError) {
-      log(`3D display unavailable: ${viewerError.message}`, true);
-      meshInfo.textContent = `${generatedStl.length.toLocaleString()} STL bytes generated`;
-      setStatus(`STL generated successfully, but 3D display is unavailable: ${viewerError.message}`);
-    }
-  } catch (error) {
+  const finishWithError = error => {
+    if (worker !== activeWorker) return;
+    const elapsed = performance.now() - renderStartedAt;
+    finishWorker();
+    setProgress({ phase: 'failed', progress: 0, detail: error?.message || String(error) });
+    progressElapsed.textContent = formatElapsed(elapsed);
     log(error?.stack || String(error), true);
     setStatus(`Render failed: ${error?.message || error}`);
-  } finally {
-    renderButton.disabled = false;
+  };
+
+  worker.onerror = event => {
+    finishWithError(new Error(event.message || 'OpenSCAD worker crashed'));
+  };
+
+  worker.onmessage = async event => {
+    const message = event.data || {};
+    if (message.jobId !== jobId || worker !== activeWorker) return;
+
+    if (message.type === 'stdout') {
+      log(message.text);
+      return;
+    }
+    if (message.type === 'stderr') {
+      log(message.text, true);
+      return;
+    }
+    if (message.type === 'phase') {
+      setProgress({ phase: message.phase, progress: message.progress, detail: message.detail });
+      if (message.phase !== 'render') setStatus(message.detail || message.phase);
+      return;
+    }
+    if (message.type === 'error') {
+      finishWithError(new Error(message.message || 'OpenSCAD worker failed'));
+      return;
+    }
+    if (message.type === 'done') {
+      const elapsed = message.elapsedMs ?? (performance.now() - renderStartedAt);
+      const result = new Uint8Array(message.buffer);
+      finishWorker();
+      generatedStl = result;
+      downloadButton.disabled = false;
+      setProgress({ phase: 'display', progress: 97, detail: 'OpenSCAD finished. Preparing interactive 3D view…' });
+      progressElapsed.textContent = formatElapsed(elapsed);
+
+      try {
+        await initViewer();
+        displayStl(generatedStl);
+        meshInfo.textContent += ' · browser WASM render';
+        setProgress({ phase: 'done', progress: 100, detail: `Completed in ${formatElapsed(elapsed)}.` });
+        setStatus(`Rendered ${entry.path} in a background worker in ${formatElapsed(elapsed)}. Page remained responsive.`);
+      } catch (viewerError) {
+        log(`3D display unavailable: ${viewerError.message}`, true);
+        meshInfo.textContent = `${generatedStl.length.toLocaleString()} STL bytes generated`;
+        setProgress({ phase: 'done', progress: 100, detail: `STL generated in ${formatElapsed(elapsed)}; 3D display failed.` });
+        setStatus(`STL generated successfully, but 3D display is unavailable: ${viewerError.message}`);
+      }
+    }
+  };
+
+  try {
+    const files = filesForEntry(entry);
+    log(`Background render source closure: ${files.length}/${manifest.files.length} repository SCAD files.`);
+    worker.postMessage({
+      type: 'render',
+      jobId,
+      entryPath: entry.path,
+      files,
+      commit: manifest.commit
+    });
+  } catch (error) {
+    finishWithError(error);
   }
 }
 
 function downloadStl() {
   if (!generatedStl) return;
   const entry = selectedEntry();
-  const filename = entry.path.split("/").pop().replace(/\.scad$/i, ".stl");
-  const blob = new Blob([generatedStl], { type: "model/stl" });
+  const filename = entry.path.split('/').pop().replace(/\.scad$/i, '.stl');
+  const blob = new Blob([generatedStl], { type: 'model/stl' });
   const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
+  const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = filename;
   document.body.appendChild(anchor);
@@ -340,28 +451,31 @@ async function init() {
   await loadManifest();
 
   for (const entry of manifest.entries) {
-    const option = document.createElement("option");
+    const option = document.createElement('option');
     option.value = entry.path;
-    option.textContent = entry.label || entry.path;
+    option.textContent = `${entry.prebuilt ? '● ' : ''}${entry.label || entry.path}`;
     modelSelect.appendChild(option);
   }
 
-  modelSelect.addEventListener("change", () => showSelectedSource().catch(error => {
+  modelSelect.addEventListener('change', () => showSelectedSource().catch(error => {
     log(error?.stack || String(error), true);
     setStatus(`Source load failed: ${error.message}`);
   }));
-  renderButton.addEventListener("click", renderSelected);
-  downloadButton.addEventListener("click", downloadStl);
-  window.addEventListener("resize", resizeViewer);
+  renderButton.addEventListener('click', renderSelected);
+  cancelButton.addEventListener('click', () => cancelRender());
+  downloadButton.addEventListener('click', downloadStl);
+  window.addEventListener('resize', resizeViewer);
+  window.addEventListener('beforeunload', () => {
+    if (activeWorker) activeWorker.terminate();
+  });
 
   await showSelectedSource();
 
-  // Viewer initialization is deliberately after manifest/source loading.
-  // This keeps repository files usable even in a browser/WebView where WebGL
-  // or advanced module loading is unavailable.
   try {
     await initViewer();
-    setStatus(`Ready. ${manifest.entries.length} renderable SCAD file(s) from commit ${manifest.commit.slice(0, 8)}.`);
+    if (!generatedStl) {
+      setStatus(`Ready. ${manifest.entries.length} renderable SCAD file(s) from commit ${manifest.commit.slice(0, 8)}.`);
+    }
   } catch (error) {
     log(`3D viewer initialization failed: ${error?.stack || error}`, true);
     setStatus(`Source loaded. 3D viewer unavailable: ${error?.message || error}`);
