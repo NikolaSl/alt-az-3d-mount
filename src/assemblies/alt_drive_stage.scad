@@ -27,8 +27,8 @@ module alt_drive_stage(show_guard = true,
     // outboard, so the yoke arm and motor body are shown behind Z=0.
     assert(ALT_OUTPUT_SPACER_D <= 12.5,
            "Spacer must bear on the 608 inner ring, not the outer race");
-    assert(ALT_SHAFT_L / 2 - YOKE_OUTER_W / 2 > ALT_OUTPUT_HUB_H +
-           ALT_UPPER_GEAR_Z - GEAR_FACE - 1,
+    assert(ALT_SHAFT_L / 2 - YOKE_OUTER_W / 2 >
+           ALT_UPPER_GEAR_Z + ALT_OUTPUT_HUB_H + 0.5,
            "ALT shaft has insufficient drive-side projection");
 
     if (show_arm)
