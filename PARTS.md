@@ -14,11 +14,12 @@ This file is the **system decomposition source of truth** for the current machin
 - `MODELED` — source exists but is not yet a trusted dependency.
 - `PART_QA_PASS` — individual geometric/visual QA passed.
 - `INTEGRATED_CAD` — integrated into the current assembly and accepted as a CAD dependency.
+- `MOTION_QA_PASS` — relevant moving assembly has passed the current `MOTION_QA_PROTOCOL.md` checkpoint.
 - `PHYSICAL_VERIFY` — CAD is usable, but one or more real-world fits/dimensions remain provisional.
 - `FROZEN` — relevant real-world interfaces have been physically verified and should not change without explicit backtracking.
 - `BLOCKED` / `NEEDS_REVALIDATION` — normal exceptional states defined by `DESIGN_PROTOCOL.md`.
 
-A part may carry two status dimensions, e.g. `INTEGRATED_CAD / PHYSICAL_VERIFY`.
+A part/assembly may carry multiple status dimensions, e.g. `INTEGRATED_CAD / MOTION_QA_PASS / PHYSICAL_VERIFY`.
 
 ## Printed elementary parts
 
@@ -85,8 +86,10 @@ Virtual assemblies are not printable parts. They are integration checkpoints and
 | `A-YOKE` | `src/assemblies/yoke_stage.scad` | AZ-supported yoke structure and ALT bearing datums | `INTEGRATED_CAD` |
 | `A-PAYLOAD` | `src/assemblies/payload_stage.scad` | Yoke + shaft + clamps + payload plate | `INTEGRATED_CAD` |
 | `A-ALT-DRIVE` | `src/assemblies/alt_drive_stage.scad` | Drive arm + ALT motor/reducer/output stack | `INTEGRATED_CAD` |
-| `A-FULL` | `src/assemblies/full_mount.scad` | Best-known complete dual-axis machine for tripod mode | `INTEGRATED_CAD / PHYSICAL_VERIFY` |
-| `A-TABLETOP-FULL` | `src/assemblies/tabletop_full_mount.scad` | Best-known complete machine on tabletop base | `INTEGRATED_CAD / PHYSICAL_VERIFY` |
+| `A-FULL` | `src/assemblies/full_mount.scad` | Best-known complete dual-axis machine for tripod mode | `INTEGRATED_CAD / MOTION_QA_PASS / PHYSICAL_VERIFY` |
+| `A-TABLETOP-FULL` | `src/assemblies/tabletop_full_mount.scad` | Best-known complete machine on tabletop base | `INTEGRATED_CAD / MOTION_QA_PASS / PHYSICAL_VERIFY` |
+
+Motion-QA evidence for the full assemblies is recorded in `docs/motion-qa-results.md`. The accepted structural checkpoint found no collision in 111 ALT samples from `-20°` to `+90°` at 1° resolution; minimum sampled payload-to-upper clearance was 6.0 mm.
 
 ## Dependency order
 
@@ -126,14 +129,18 @@ When a part, hardware envelope or shared parameter changes:
 2. mark every directly dependent part here `NEEDS_REVALIDATION`;
 3. propagate through the dependency graph only as far as affected interfaces require;
 4. re-run per-part/context/assembly QA in dependency order;
-5. update `ASSEMBLY.md`, BOM and `PROJECT_STATE.md` before the change is considered integrated.
+5. if a motion envelope changed, invalidate `MOTION_QA_PASS` and re-run `MOTION_QA_PROTOCOL.md`;
+6. update `ASSEMBLY.md`, BOM and `PROJECT_STATE.md` before the change is considered integrated.
 
 ## Current blockers shared with `PROJECT_STATE.md`
+
+The core structural motion CAD is **not currently blocked**: `M-AZ` and `M-ALT` have `MOTION_QA_PASS`. Remaining blockers are physical/production verification:
 
 - `HOLD-MOTOR-DIMS` — real 28BYJ-48 dimensions are not frozen; `V-BYJ-FIT` is ready.
 - `HOLD-PRINT-FITS` — printer/material fits are not calibrated; `V-MECH-FIT` and `V-FASTENER-FIT` are ready.
 - `HOLD-AZ-AXLE` — AZ compound axle needs physical validation/final support decision.
 - `VERIFY-ALT-DRIVE` — ALT shaft/pinion/shoulder-axle/output-clamp stack needs physical fit verification.
 - `VERIFY-TABLETOP-STABILITY` — real payload CG and foot contact must be checked before treating tabletop mode as stable at the project maximum load.
+- Future asymmetric cables/electronics/hard stops invalidate the current AZ symmetry-based collision proof until motion QA is re-run with those obstacles modeled.
 
-No new part depending on one of these uncertain interfaces should be marked `FROZEN` until the corresponding physical test is complete.
+No part depending on an uncertain physical interface should be marked `FROZEN` until the corresponding physical test is complete.
