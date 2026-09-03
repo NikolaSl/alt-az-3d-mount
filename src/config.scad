@@ -122,16 +122,39 @@ ALT_GEARBOX_GAP = 14.0;
 ALT_BACKPLATE_H = 3.2;
 ALT_SHAFT_L = 165.0;
 
+// Payload plate, split clamps and sliding 1/4-20 attachment.
 PAYLOAD_PLATE = [80.0, 112.0, 6.0];
 PAYLOAD_SLOT_L = 48.0;
 PAYLOAD_SLOT_D = TRIPOD_CLEARANCE_D;
+PAYLOAD_SLOT_CENTER_Y = 8.0;
+PAYLOAD_SLIDER_TRAVEL = PAYLOAD_SLOT_L - PAYLOAD_SLOT_D;
+PAYLOAD_SLIDER_MIN_Y = PAYLOAD_SLOT_CENTER_Y - PAYLOAD_SLIDER_TRAVEL / 2;
+PAYLOAD_SLIDER_MAX_Y = PAYLOAD_SLOT_CENTER_Y + PAYLOAD_SLIDER_TRAVEL / 2;
+
 SHAFT_CLAMP_W = 18.0;
 SHAFT_CLAMP_L = 30.0;
 SHAFT_CLAMP_H = 10.0;
-PAYLOAD_CLAMP_HALF_H = 8.0;
+PAYLOAD_CLAMP_LOWER_H = 8.0;
 PAYLOAD_CLAMP_X = 27.0;
 PAYLOAD_CLAMP_BOLT_Y = 10.0;
-PAYLOAD_PLATE_OFFSET_Z = 8.0;
+
+// Hand knob around the metal payload screw. The ribs extend beyond the 28 mm body.
+CAMERA_KNOB_D = 28.0;
+CAMERA_KNOB_H = 8.0;
+CAMERA_KNOB_RIB_RADIAL_T = 2.4;
+CAMERA_KNOB_ENVELOPE_D = CAMERA_KNOB_D + CAMERA_KNOB_RIB_RADIAL_T;
+CAMERA_BOLT_HEAD_AF = 11.4;
+CAMERA_BOLT_HEAD_H = 4.6;
+
+// The knob/bolt adjustment assembly must clear the horizontal ALT shaft through
+// the complete balancing-slot travel. Raising the plate through the upper clamp
+// is preferable to sacrificing balance travel.
+PAYLOAD_KNOB_SHAFT_CLEARANCE = 3.0;
+PAYLOAD_CLAMP_UPPER_H = AXIS_SHAFT_D / 2 + PAYLOAD_KNOB_SHAFT_CLEARANCE + CAMERA_KNOB_H;
+PAYLOAD_PLATE_Z = PAYLOAD_CLAMP_UPPER_H;
+PAYLOAD_KNOB_Z = PAYLOAD_PLATE_Z - CAMERA_KNOB_H;
+PAYLOAD_ADJUSTMENT_MIN_CLEARANCE = 2.0;
+PAYLOAD_PLATE_OFFSET_Z = PAYLOAD_PLATE_Z;
 
 // Altitude 20:1 drive, mounted outside yoke_arm_drive.
 // Local gearbox coordinates are centered on the ALT shaft; +Z points outboard.
