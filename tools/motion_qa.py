@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-"""Fast mesh-based two-axis motion QA.
+"""Fast mesh-based multi-state motion QA for the Alt-Az mount.
 
 OpenSCAD is used once per reusable diagnostic solid. Python-FCL then moves the
-payload mesh through the full ALT range without repeatedly invoking CGAL. This
-makes dense 1-degree collision/distance sampling practical in CI.
+meshes through the full ALT range and the payload balancing adjustment range
+without repeatedly invoking CGAL.
 
 AZ collision clearance for the current mechanical design is covered analytically:
-- payload and fixed upper structure rotate together as one rigid set;
-- the lower collision solid is deliberately a conservative rotationally symmetric
-  envelope that contains the actual base/cover/turntable/tabletop exterior.
-Therefore the ALT clearance result is invariant for every AZ angle in 0..360°.
-Asymmetric future cables/accessories must be added explicitly to the collision model.
+- payload, adjustable fastener and fixed upper structure rotate together in AZ;
+- the lower collision solid is a conservative rotationally symmetric envelope.
+Asymmetric future cables/accessories must be modeled explicitly.
 """
 
 from __future__ import annotations
@@ -25,6 +23,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 from trimesh.collision import CollisionManager
+from trimesh.transformations import translation_matrix
 
 
 def run(cmd: list[str], cwd: Path, timeout: int = 180) -> subprocess.CompletedProcess[str]:
@@ -39,6 +38,19 @@ def config_scalar(text: str, name: str) -> float:
     if not match:
         raise RuntimeError(f"Cannot read scalar {name} from src/config.scad")
     return float(match.group(1))
+
+
+def values_inclusive(start: float, stop: float, step: float) -> list[float]:
+    if step <= 0 or stop < start:
+        raise ValueError("range requires min <= max and positive step")
+    values, value = [], start
+    eps = abs(step) * 1e-9 + 1e-9
+    while value <= stop + eps:
+        values.append(round(value, 10))
+        value += step
+    if not math.isclose(values[-1], stop, rel_tol=0, abs_tol=eps):
+        values.append(stop)
+    return values
 
 
 def export_diag_mesh(root: Path, outdir: Path, *, mode: int, name: str,
@@ -67,7 +79,7 @@ def export_diag_mesh(root: Path, outdir: Path, *, mode: int, name: str,
 
 
 def payload_transform(alt_deg: float, axis_z: float) -> np.ndarray:
-    # OpenSCAD order: translate([0,0,axis_z]) rotate([alt,0,0]) payload_local().
+    # OpenSCAD: translate([0,0,axis_z]) rotate([alt,0,0]) local_body().
     a = math.radians(alt_deg)
     c, s = math.cos(a), math.sin(a)
     matrix = np.eye(4)
@@ -76,14 +88,17 @@ def payload_transform(alt_deg: float, axis_z: float) -> np.ndarray:
     return matrix
 
 
+def fastener_transform(alt_deg: float, axis_z: float, slider_y: float) -> np.ndarray:
+    # Local slider translation happens before the full payload ALT transform.
+    return payload_transform(alt_deg, axis_z) @ translation_matrix([0.0, slider_y, 0.0])
+
+
 def collision_sweep(payload: trimesh.Trimesh, fixed: trimesh.Trimesh,
-                    *, axis_z: float, alt_values: list[int], name: str) -> dict:
+                    *, axis_z: float, alt_values: list[float], name: str) -> dict:
     manager = CollisionManager()
     manager.add_object(name, fixed)
-    samples = []
-    collisions = []
-    min_distance = math.inf
-    min_pose = None
+    samples, collisions = [], []
+    min_distance, min_pose = math.inf, None
     for alt in alt_values:
         transform = payload_transform(alt, axis_z)
         hit = bool(manager.in_collision_single(payload, transform=transform))
@@ -107,32 +122,79 @@ def collision_sweep(payload: trimesh.Trimesh, fixed: trimesh.Trimesh,
     }
 
 
-def compile_pose(root: Path, outdir: Path, *, az: float, alt: float, label: str) -> dict:
+def fastener_state_grid(fastener: trimesh.Trimesh, fixed: trimesh.Trimesh,
+                        *, axis_z: float, alt_values: list[float],
+                        slider_values: list[float], name: str,
+                        minimum_clearance: float = 0.0) -> dict:
+    manager = CollisionManager()
+    manager.add_object(name, fixed)
+    samples, failures = [], []
+    min_distance, min_state = math.inf, None
+    tolerance = 1e-6
+    for slider_y in slider_values:
+        for alt in alt_values:
+            transform = fastener_transform(alt, axis_z, slider_y)
+            hit = bool(manager.in_collision_single(fastener, transform=transform))
+            distance = float(manager.min_distance_single(fastener, transform=transform))
+            clear = (not hit) and distance + tolerance >= minimum_clearance
+            if not clear:
+                failures.append({"alt_deg": alt, "payload_screw_y_mm": slider_y,
+                                 "collision": hit, "distance_mm": distance})
+            if distance < min_distance:
+                min_distance = distance
+                min_state = {"alt_deg": alt, "payload_screw_y_mm": slider_y}
+            samples.append({"alt_deg": alt, "payload_screw_y_mm": slider_y,
+                            "collision": hit, "distance_mm": distance,
+                            "required_clearance_mm": minimum_clearance,
+                            "clearance_ok": clear})
+    return {
+        "name": name,
+        "status": "CLEAR" if not failures else "FAIL",
+        "sample_count": len(samples),
+        "alt_samples": len(alt_values),
+        "slider_samples": len(slider_values),
+        "minimum_required_clearance_mm": minimum_clearance,
+        "minimum_distance_mm": min_distance,
+        "minimum_distance_state": min_state,
+        "failures": failures,
+        "samples": samples,
+    }
+
+
+def compile_pose(root: Path, outdir: Path, *, az: float, alt: float, label: str,
+                 payload_y: float | None = None) -> dict:
     src = root / "src/assemblies/tabletop_full_mount.scad"
     out = outdir / f"compile-{label}.csg"
-    cmd = ["openscad", "-D", f"AZ_ANGLE={az}", "-D", f"ALT_ANGLE={alt}",
-           "-o", str(out), str(src)]
+    cmd = ["openscad", "-D", f"AZ_ANGLE={az}", "-D", f"ALT_ANGLE={alt}"]
+    if payload_y is not None:
+        cmd += ["-D", f"PAYLOAD_SCREW_Y={payload_y}"]
+    cmd += ["-o", str(out), str(src)]
     p = run(cmd, root, timeout=120)
     fatal = p.returncode != 0 or any(
         token in p.stdout for token in ("ERROR:", "Parser error", "Can't parse file", "Assertion")
     )
     ok = (not fatal) and out.exists() and out.stat().st_size > 0
     out.unlink(missing_ok=True)
-    return {"az_deg": az, "alt_deg": alt, "status": "OK" if ok else "ERROR",
+    return {"az_deg": az, "alt_deg": alt, "payload_screw_y_mm": payload_y,
+            "status": "OK" if ok else "ERROR",
             "log_tail": "\n".join(p.stdout.strip().splitlines()[-10:])}
 
 
-def render_pose(root: Path, outdir: Path, *, az: float, alt: float, name: str) -> dict:
+def render_pose(root: Path, outdir: Path, *, az: float, alt: float, name: str,
+                payload_y: float | None = None) -> dict:
     src = root / "src/assemblies/tabletop_full_mount.scad"
     out = outdir / f"pose-{name}.png"
     cmd = ["xvfb-run", "-a", "openscad", "--preview=throwntogether",
            "--projection=o", "--autocenter", "--viewall", "--imgsize=900,700",
            "--camera=240,-260,190,0,0,80", "--view=edges",
-           "-D", f"AZ_ANGLE={az}", "-D", f"ALT_ANGLE={alt}",
-           "-o", str(out), str(src)]
+           "-D", f"AZ_ANGLE={az}", "-D", f"ALT_ANGLE={alt}"]
+    if payload_y is not None:
+        cmd += ["-D", f"PAYLOAD_SCREW_Y={payload_y}"]
+    cmd += ["-o", str(out), str(src)]
     p = run(cmd, root, timeout=120)
     ok = p.returncode == 0 and out.exists() and out.stat().st_size > 0
     return {"name": name, "az_deg": az, "alt_deg": alt,
+            "payload_screw_y_mm": payload_y,
             "status": "OK" if ok else "ERROR",
             "file": str(out.relative_to(root)) if out.exists() else None,
             "log_tail": "\n".join(p.stdout.strip().splitlines()[-10:])}
@@ -142,7 +204,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default="build/motion-qa")
     parser.add_argument("--clearance-margin", type=float, default=0.5)
-    parser.add_argument("--alt-step", type=int, default=1)
+    parser.add_argument("--alt-step", type=float, default=1.0)
+    parser.add_argument("--slider-step", type=float, default=0.5)
     args = parser.parse_args()
 
     root = Path.cwd().resolve()
@@ -157,7 +220,15 @@ def main() -> int:
     slot_floor = config_scalar(config, "YOKE_BRIDGE_H") - config_scalar(config, "YOKE_SLOT_DEPTH")
     axis_z = yoke_stage_z + slot_floor + config_scalar(config, "YOKE_AXIS_Z")
 
-    payload, payload_meta = export_diag_mesh(root, outdir, mode=10, name="payload-collision-body")
+    slot_length = config_scalar(config, "PAYLOAD_SLOT_L")
+    slot_diameter = config_scalar(config, "TRIPOD_CLEARANCE_D")
+    slot_center = config_scalar(config, "PAYLOAD_SLOT_CENTER_Y")
+    slider_travel = slot_length - slot_diameter
+    slider_min = slot_center - slider_travel / 2
+    slider_max = slot_center + slider_travel / 2
+
+    payload, payload_meta = export_diag_mesh(root, outdir, mode=10, name="payload-structural-body")
+    fastener, fastener_meta = export_diag_mesh(root, outdir, mode=13, name="payload-adjustable-fastener")
     upper, upper_meta = export_diag_mesh(root, outdir, mode=11, name="upper-obstructions")
     lower, lower_meta = export_diag_mesh(root, outdir, mode=12, name="lower-conservative",
                                          tabletop=True, margin=0.0)
@@ -165,7 +236,9 @@ def main() -> int:
         root, outdir, mode=12, name="lower-conservative-margin",
         tabletop=True, margin=args.clearance_margin)
 
-    alt_values = list(range(-20, 91, args.alt_step))
+    alt_values = values_inclusive(-20.0, 90.0, args.alt_step)
+    slider_values = values_inclusive(slider_min, slider_max, args.slider_step)
+
     upper_sweep = collision_sweep(payload, upper, axis_z=axis_z,
                                   alt_values=alt_values, name="upper")
     lower_sweep = collision_sweep(payload, lower, axis_z=axis_z,
@@ -174,7 +247,18 @@ def main() -> int:
                                          alt_values=alt_values,
                                          name=f"lower-expanded-{args.clearance_margin}mm")
 
-    # Analytic invariant checks remain executable in OpenSCAD as a second implementation.
+    # The adjustable payload fastener is checked over the full ALT × slider grid.
+    fastener_upper_grid = fastener_state_grid(
+        fastener, upper, axis_z=axis_z, alt_values=alt_values,
+        slider_values=slider_values, name="fastener-vs-upper")
+    fastener_lower_grid = fastener_state_grid(
+        fastener, lower, axis_z=axis_z, alt_values=alt_values,
+        slider_values=slider_values, name="fastener-vs-lower")
+    fastener_lower_margin_grid = fastener_state_grid(
+        fastener, lower_margin, axis_z=axis_z, alt_values=alt_values,
+        slider_values=slider_values, name="fastener-vs-expanded-lower")
+
+    # Analytic invariant checks are a second implementation for simple relationships.
     analytic_out = outdir / "analytic-clearance.csg"
     analytic = run(["openscad", "-D", f"QA_MARGIN={args.clearance_margin}",
                     "-o", str(analytic_out),
@@ -193,37 +277,60 @@ def main() -> int:
             pose_checks.append(compile_pose(root, outdir, az=az, alt=alt,
                                             label=f"grid-az{az:03d}-alt{alt:+04d}"))
 
+    # Explicit actual-assembly checks at both payload-adjustment endpoints.
+    for payload_y, y_label in [(slider_min, "min"), (slider_max, "max")]:
+        for alt in [-20, 0, 90]:
+            pose_checks.append(compile_pose(
+                root, outdir, az=0, alt=alt,
+                payload_y=payload_y,
+                label=f"slider-{y_label}-alt{alt:+04d}"))
+
     review_poses = []
     for az, alt in [(0,-20),(0,0),(0,45),(0,90),(90,-20),(90,90),
                     (180,-20),(180,90),(270,-20),(270,90)]:
         review_poses.append(render_pose(root, outdir, az=az, alt=alt,
                                         name=f"tabletop-az{az:03d}-alt{alt:+04d}"))
+    for payload_y, y_label in [(slider_min, "min"), (slider_max, "max")]:
+        review_poses.append(render_pose(root, outdir, az=0, alt=-20,
+                                        payload_y=payload_y,
+                                        name=f"slider-{y_label}-alt-020"))
+        review_poses.append(render_pose(root, outdir, az=0, alt=90,
+                                        payload_y=payload_y,
+                                        name=f"slider-{y_label}-alt+090"))
 
     failures = []
-    for sweep in (upper_sweep, lower_sweep, lower_margin_sweep):
-        if sweep["status"] != "CLEAR": failures.append(sweep)
+    for sweep in (upper_sweep, lower_sweep, lower_margin_sweep,
+                  fastener_upper_grid, fastener_lower_grid, fastener_lower_margin_grid):
+        if sweep["status"] != "CLEAR":
+            failures.append(sweep)
     if not analytic_ok:
         failures.append({"analytic_clearance": "ERROR", "log": analytic.stdout[-2000:]})
     failures += [x for x in pose_checks if x["status"] != "OK"]
     failures += [x for x in review_poses if x["status"] != "OK"]
 
     report = {
-        "protocol": "MOTION_QA_PROTOCOL.md",
+        "protocols": ["MOTION_QA_PROTOCOL.md", "MECHANICAL_INTEGRITY_PROTOCOL.md"],
         "plan": "docs/motion-sweep-plan.md",
         "axis_z_mm": axis_z,
+        "slider_range_mm": [slider_min, slider_max],
         "symmetry_basis": (
-            "Upper structure and payload undergo the same rigid AZ rotation. The lower "
-            "diagnostic mesh is a conservative rotationally symmetric superset of the "
-            "actual lower exterior. Therefore collision distances depend on ALT only for "
-            "the current mechanical design."
+            "Upper structure, payload and payload fastener undergo the same rigid AZ rotation. "
+            "The lower diagnostic mesh is a conservative rotationally symmetric superset of the "
+            "actual lower exterior. Therefore current rigid collision distances do not depend on AZ."
         ),
         "diagnostic_meshes": {
-            "payload": payload_meta, "upper": upper_meta,
-            "lower": lower_meta, "lower_margin": lower_margin_meta,
+            "payload_structural": payload_meta,
+            "payload_fastener": fastener_meta,
+            "upper": upper_meta,
+            "lower": lower_meta,
+            "lower_margin": lower_margin_meta,
         },
         "upper_sweep": upper_sweep,
         "lower_sweep": lower_sweep,
         "lower_margin_sweep": lower_margin_sweep,
+        "fastener_upper_grid": fastener_upper_grid,
+        "fastener_lower_grid": fastener_lower_grid,
+        "fastener_lower_margin_grid": fastener_lower_margin_grid,
         "analytic_clearance": {
             "status": "OK" if analytic_ok else "ERROR",
             "log_tail": "\n".join(analytic.stdout.strip().splitlines()[-12:]),
@@ -235,15 +342,21 @@ def main() -> int:
         "result": "PASS" if not failures else "FAIL",
         "alt_step_deg": args.alt_step,
         "alt_samples": len(alt_values),
+        "slider_step_mm": args.slider_step,
+        "slider_samples": len(slider_values),
+        "fastener_alt_slider_states_per_obstruction": len(alt_values) * len(slider_values),
         "upper_min_distance_mm": upper_sweep["minimum_distance_mm"],
         "upper_min_distance_alt_deg": upper_sweep["minimum_distance_alt_deg"],
         "lower_min_distance_mm": lower_sweep["minimum_distance_mm"],
         "lower_min_distance_alt_deg": lower_sweep["minimum_distance_alt_deg"],
         "expanded_lower_min_distance_mm": lower_margin_sweep["minimum_distance_mm"],
         "expanded_lower_min_distance_alt_deg": lower_margin_sweep["minimum_distance_alt_deg"],
+        "fastener_upper_min_distance_mm": fastener_upper_grid["minimum_distance_mm"],
+        "fastener_upper_min_state": fastener_upper_grid["minimum_distance_state"],
         "clearance_margin_mm": args.clearance_margin,
         "az_compile_samples": 37,
         "coupled_grid_configurations": 32,
+        "additional_slider_endpoint_compile_checks": 6,
         "review_poses": len(review_poses),
         "failures": len(failures),
     }
@@ -251,18 +364,23 @@ def main() -> int:
     (outdir / "motion-qa.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
     md = ["# Motion QA run", "", f"Result: **{summary['result']}**", "",
-          f"- ALT collision/distance sweep: -20°..90° every {args.alt_step}° ({len(alt_values)} samples).",
-          f"- Minimum payload→upper distance: {summary['upper_min_distance_mm']:.3f} mm at ALT {summary['upper_min_distance_alt_deg']}°.",
+          f"- ALT structural sweep: -20°..90° every {args.alt_step:g}° ({len(alt_values)} samples).",
+          f"- Payload balancing range: {slider_min:.3f}..{slider_max:.3f} mm every {args.slider_step:.3f} mm ({len(slider_values)} samples).",
+          f"- Adjustable fastener external grid: {len(alt_values) * len(slider_values)} ALT×slider states per obstruction.",
+          f"- Minimum payload structural body→upper distance: {summary['upper_min_distance_mm']:.3f} mm at ALT {summary['upper_min_distance_alt_deg']}°.",
           f"- Minimum payload→lower conservative-envelope distance: {summary['lower_min_distance_mm']:.3f} mm at ALT {summary['lower_min_distance_alt_deg']}°.",
           f"- Expanded lower-envelope ({args.clearance_margin:.2f} mm) minimum distance: {summary['expanded_lower_min_distance_mm']:.3f} mm at ALT {summary['expanded_lower_min_distance_alt_deg']}°.",
+          f"- Minimum adjustable-fastener→upper distance: {summary['fastener_upper_min_distance_mm']:.3f} mm at {summary['fastener_upper_min_state']}.",
           "- AZ compile sweep: 0°..360° every 10°, including wrap endpoint.",
           "- Coupled grid: 8 AZ positions × 4 ALT positions = 32 configurations.",
-          f"- Static human-review renders: {len(review_poses)}.", "",
+          "- Actual full assembly also compiles at both payload-slider endpoints for ALT -20°, 0°, 90°.",
+          f"- Human-review renders: {len(review_poses)}.", "",
           "## AZ symmetry basis", "", report["symmetry_basis"], ""]
     if failures:
         md += ["## Failures", "", f"Failure count: {len(failures)}. See motion-qa.json for details."]
     else:
-        md += ["No collision was found in the sampled range and the configured lower safety-margin envelope remained clear.", "",
+        md += ["No forbidden rigid-body collision was found in the sampled operational/adjustment state space.", "",
+               "Internal payload fastener↔shaft/clamp exclusion is additionally checked by tools/payload_adjustment_qa.py.", "",
                "Physical cable routing, backlash, compliance, printer fit, torque and tabletop overturn stability remain separate verification gates."]
     (outdir / "SUMMARY.md").write_text("\n".join(md) + "\n", encoding="utf-8")
     print(json.dumps(summary, indent=2))
