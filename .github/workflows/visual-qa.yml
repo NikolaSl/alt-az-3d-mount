@@ -1,6 +1,18 @@
 name: Visual geometric QA
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "src/config.scad"
+      - "src/parts/payload_clamp_upper.scad"
+      - "src/parts/payload_clamp_lower.scad"
+      - "src/parts/payload_plate.scad"
+      - "src/parts/camera_screw_knob.scad"
+      - "src/lib/payload_fastener.scad"
+      - "src/assemblies/payload_stage.scad"
+      - "src/assemblies/payload_adjustment_section.scad"
+      - ".github/workflows/visual-qa.yml"
   workflow_dispatch:
     inputs:
       scad_path:
@@ -23,7 +35,8 @@ permissions:
   contents: read
 
 jobs:
-  qa:
+  custom:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -37,7 +50,7 @@ jobs:
           sudo apt-get install -y openscad xvfb
           python -m pip install --upgrade pip
           python -m pip install -r requirements-qa.txt
-      - name: Run visual/geometric QA
+      - name: Run requested visual/geometric QA
         env:
           SCAD_PATH: ${{ inputs.scad_path }}
           PREVIEW_ONLY: ${{ inputs.preview_only }}
@@ -53,4 +66,38 @@ jobs:
           name: visual-qa-${{ github.run_id }}
           path: build/qa
           if-no-files-found: warn
+          retention-days: 30
+
+  payload-regression:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install OpenSCAD and QA runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openscad xvfb
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-qa.txt
+      - name: Full QA for changed payload elementary parts
+        run: |
+          python tools/visual_qa.py src/parts/payload_clamp_upper.scad
+          python tools/visual_qa.py src/parts/payload_clamp_lower.scad
+          python tools/visual_qa.py src/parts/payload_plate.scad
+          python tools/visual_qa.py src/parts/camera_screw_knob.scad
+      - name: Context/section preview QA
+        run: |
+          python tools/visual_qa.py src/assemblies/payload_stage.scad --preview-only
+          python tools/visual_qa.py src/assemblies/payload_adjustment_section.scad --preview-only
+      - name: Upload payload regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: payload-visual-qa-${{ github.sha }}
+          path: build/qa
+          if-no-files-found: error
           retention-days: 30
