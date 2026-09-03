@@ -1,207 +1,209 @@
-# Project State — session resume checkpoint
+# Project State — fresh-session checkpoint
 
-This file is the short bootstrap index for resuming the project from a fresh chat or device. It does **not** replace the source, `PARTS.md`, `INTERFACES.md`, `ASSEMBLY.md`, QA documents or the design protocols.
+This is the concise resume index for the current machine. It does **not** replace source, `PARTS.md`, `INTERFACES.md`, `ASSEMBLY.md`, QA evidence or protocols.
 
 ## Current phase
 
-**Core mechanical CAD is complete for tripod and tabletop modes, structural two-axis motion QA has passed, and browser/mobile CAD review is working responsively. Physical fit calibration and functional dry-fit are now the production-print gate.**
+**Core tripod/tabletop mount CAD is integrated; corrected payload attachment and full modeled mechanical state-space QA pass. Production printing is gated by physical hardware/fit/load verification.**
 
-The current architecture is an Alt-Az mount for a balanced payload below 1 kg using two 28BYJ-48 stepper motors and an additional printable 20:1 reducer on each axis.
+Architecture: balanced payload target below 1 kg, two 28BYJ-48 motors, printable 20:1 reducer on each axis, 120 mm AZ turntable, two 608ZZ ALT bearings, smooth Ø8×165 mm ALT shaft, sliding 1/4-20 manual balance attachment, tripod interface and removable Ø190 tabletop base.
 
-## Trusted full assemblies
+## Important correction completed
+
+Human browser review found that the original `camera_screw_knob` intersected the horizontal ALT shaft. This was a real CAD defect and exposed a QA gap: the old moving-payload collision union omitted the shaft because shaft/clamp/bearing contact is intentional, so internal bodies sharing the same ALT transform could overlap without being detected.
+
+The accepted correction:
+
+```text
+upper payload clamp/riser height = 15 mm
+payload plate underside Z        = 15 mm
+knob bottom Z                    = 7 mm
+ALT shaft top Z                  = 4 mm
+designed knob→shaft gap          = 3 mm
+complete balance slot preserved
+```
+
+The physical QA fastener now includes both printed knob and real metal 1/4-20 bolt head/shank envelope.
+
+## Trusted full assemblies and review entries
 
 ```text
 src/assemblies/full_mount.scad
 src/assemblies/tabletop_full_mount.scad
-```
-
-Useful subsystem/context entry points:
-
-```text
-src/assemblies/az_stage.scad
-src/assemblies/yoke_stage.scad
 src/assemblies/payload_stage.scad
-src/assemblies/alt_drive_stage.scad
-src/assemblies/tabletop_base_context.scad
+src/assemblies/payload_adjustment_section.scad
+src/assemblies/payload_adjustment_collision_check.scad
+src/assemblies/motion_collision_check.scad
 ```
 
-The full assemblies support both `AZ_ANGLE` and `ALT_ANGLE` for configuration-space inspection.
+`full_mount.scad` and `tabletop_full_mount.scad` expose `AZ_ANGLE`, `ALT_ANGLE` and `PAYLOAD_SCREW_Y`.
 
-## Accepted motion-QA checkpoint
+## Accepted current QA checkpoint
 
-See `docs/motion-qa-results.md`.
+Source/evidence: `docs/motion-qa-results.md`.
 
-Current accepted structural result:
+### Motion/state-space workflow
 
 ```text
-ALT: -20° .. +90° every 1° = 111 sampled poses
-collisions: 0
-minimum payload → upper structure: 6.0 mm @ -20°
-minimum payload → conservative lower envelope: 43.0 mm @ +90°
-0.5 mm expanded lower envelope: 42.5 mm remaining
-
-AZ assembly: 0° .. 360° every 10° = 37 poses
-coupled AZ/ALT grid: 32 configurations
-representative rendered poses: 10
+tested commit: 81738de19ba399e1249ad35a8eb541aa1ca3f9e1
+workflow run: 33772135101
+artifact id: 9900281278
 result: PASS
 ```
 
-Any future asymmetric fixed obstruction such as cable routing, connectors, electronics carriers or hard stops invalidates the present rotational-symmetry argument and requires motion QA again.
+Key results:
+
+```text
+ALT structural range: -20° .. +90° every 1° = 111 states
+payload structure→upper minimum: 6.0 mm @ -20°
+payload structure→lower minimum: 43.0 mm @ +90°
+0.5 mm expanded lower envelope: 42.5 mm remaining
+
+payload screw-center range: -12.600 .. +28.600 mm
+step: 0.500 mm = 84 states
+physical fastener→ALT shaft minimum: 3.000 mm (required 3.000)
+physical fastener→split clamps minimum: 2.800 mm (required 2.000)
+
+ALT×slider states per external obstruction: 9,324
+external obstruction envelopes: 3
+fastener collision queries: 27,972
+forbidden modeled collisions: 0
+
+AZ compile sweep: 0° .. 360° every 10° = 37
+coupled AZ/ALT grid: 32
+actual full assembly slider-endpoint critical compile checks: 6
+human-review renders: 14
+```
+
+### Payload geometric/visual regression
+
+Workflow run `33772448736`: **PASS**.
+
+```text
+upper clamp/riser  18 × 30 × 15 mm  Simple yes / watertight / 1 component
+lower clamp        18 × 30 × 8 mm   Simple yes / watertight / 1 component
+payload plate      80 × 112 × 6 mm  Simple yes / watertight / 1 component
+knob               30.4 × 30.4 × 8 mm Simple yes / watertight / 1 component
+```
+
+All changed elementary parts have seven standard views + X/Y/Z sections; payload context and Y-Z adjustment section preview QA also passed.
+
+## Mechanical-integrity methodology now active
+
+The repository now treats these as mandatory engineering contracts:
+
+- `MECHANICAL_INTEGRITY_PROTOCOL.md` — physical solid relationships, supports, fasteners, constraint/DOF chains, load paths, under/overconstraint and manual/external constraints;
+- `MOTION_QA_PROTOCOL.md` — full operational + adjustment/configuration state-space coverage;
+- `INTERFACES.md` — stable `I-*`, `R-*`, `K-*` and `M-*` contracts.
+
+Default rule: two physical solids may not overlap unless an explicit relationship permits a fit/contact/passage/embedded condition. Bodies sharing the same operational transform still require internal collision checks.
+
+A CAD transform is not a mechanism. Principal current constraint chains:
+
+```text
+K-001 AZ: M8 central datum + turntable/PTFE support + axial retention
+K-002 ALT: Ø8 shaft + two separated 608ZZ + axial retention
+K-003 payload balance: slot constrains screw-center coordinate while loose;
+                       operator controls payload yaw during manual setup;
+                       tightened state must remove translation/yaw/slip
+```
+
+The current balance slot is therefore **manual adjustment**, not a self-guided one-DOF carriage. Repeatable/autonomous balance translation would require an anti-rotation guide/second locator/rail.
+
+## QA scope limitation that must remain visible
+
+Current automated PASS covers the **mount structure + payload attachment hardware**. It does not prove every arbitrary external phone/camera/optic, adapter or cable envelope.
+
+Before a concrete payload is approved for unattended full-range operation:
+
+```text
+model conservative payload + adapter + cable envelope
+OR
+restrict and physically verify its allowed motion range
+```
+
+Future asymmetric fixed cables/connectors/electronics/hard stops also invalidate the current AZ rotational-symmetry collision proof until modeled/re-QA'd.
 
 ## Browser/mobile review architecture
 
-The generic rule is in `BROWSER_REVIEW_PROTOCOL.md`; the measured project result is in `docs/browser-review-results.md`.
-
-**Accepted current policy: all normal CAD visualization is rendered directly in the browser. CI-prebuilt STL previews are not used.**
-
-Rendering path:
+Normal visualization is browser-only:
 
 ```text
-select SCAD entry
-→ manifest dependency closure
-→ fresh background Web Worker
-→ pinned OpenSCAD 2025.03.25 WebAssembly
-→ SHA-256 verify required source files
-→ Manifold render
-→ binary STL transfer
-→ Three.js interactive display
+SCAD entry
+→ recursive dependency closure
+→ exact deployed source + SHA-256 verification
+→ background Web Worker
+→ pinned OpenSCAD 2025.03.25 WASM + Manifold
+→ binary STL
+→ Three.js
 ```
 
-Important properties:
+No normal CI-prebuilt STL preview path is maintained. UI remains responsive, elapsed time/progress/diagnostics remain live and Cancel terminates the worker.
 
-- heavy OpenSCAD work never runs on the UI thread;
-- unrelated repository SCAD files are not mounted for each render;
-- the page remains responsive during rendering;
-- elapsed time and render phase remain visible;
-- the geometry phase uses an honest indeterminate progress indicator;
-- the render can be cancelled by terminating the worker;
-- user testing confirmed that ordinary non-cached models and useful assemblies now render in seconds on the mobile browser;
-- a CI-prebuilt preview should be reintroduced only as a measured performance exception if browser performance becomes impractical again.
+The mobile site exposes project state, interfaces/constraints, assembly/BOM, calibration, Mechanical Integrity, Motion QA and design/browser protocols.
 
-Current browser implementation:
+## Fresh-session bootstrap
 
-```text
-site/app.js
-site/openscad-worker.js
-tools/build_browser_manifest.py
-.github/workflows/pages.yml
-```
-
-GitHub Pages deployment only snapshots source, builds the dependency-aware manifest, vendors the pinned WebAssembly/Three.js runtime, validates the site and publishes it. It no longer installs native OpenSCAD or generates preview STL caches.
-
-## Completed mechanical/process subsystems
-
-- removable Ø190 mm tabletop base;
-- AZ base and shared tripod/tabletop 1/4-20 interface;
-- AZ printable 20:1 reducer and rotating turntable;
-- yoke bridge and two arms;
-- two 608ZZ ALT bearing supports;
-- Ø8 mm ALT shaft architecture;
-- split payload shaft clamps and payload plate;
-- motorized ALT 20:1 reducer, output stack and guard;
-- complete tripod and tabletop virtual assemblies;
-- per-part geometric/visual QA tooling;
-- generic full-range `MOTION_QA_PROTOCOL.md`;
-- automated structural motion QA using OpenSCAD diagnostic meshes + `trimesh/python-fcl`;
-- responsive browser review protocol and Web Worker renderer;
-- formal `PARTS.md` decomposition/status ledger;
-- formal `INTERFACES.md` contracts/invalidation map;
-- live `ASSEMBLY.md` and BOM;
-- `CALIBRATION.md` plus three physical-fit coupons;
-- repository-first continuity rules so a new chat can resume entirely from GitHub.
-
-## Bootstrap order for a new chat
-
-Read in this order before changing geometry:
+Read before changing geometry:
 
 1. `REPOSITORY_CONTRACT.md`
 2. `DESIGN_PROTOCOL.md`
-3. `MOTION_QA_PROTOCOL.md`
-4. `BROWSER_REVIEW_PROTOCOL.md`
-5. this file
-6. `README.md`
-7. `PARTS.md`
-8. `INTERFACES.md`
-9. `ASSEMBLY.md`
-10. `CALIBRATION.md`
-11. `src/config.scad`
-12. `docs/visual-qa.md`
-13. `docs/motion-sweep-plan.md`
-14. `docs/motion-qa-results.md`
-15. `docs/alt-drive-qa.md`
-16. `docs/calibration-qa.md`
-17. `docs/browser-review-results.md`
-18. the current relevant assembly and neighboring part sources
+3. `MECHANICAL_INTEGRITY_PROTOCOL.md`
+4. `MOTION_QA_PROTOCOL.md`
+5. `BROWSER_REVIEW_PROTOCOL.md`
+6. this file
+7. `README.md`
+8. `PARTS.md`
+9. `INTERFACES.md`
+10. `ASSEMBLY.md`
+11. `CALIBRATION.md`
+12. `src/config.scad`
+13. `docs/visual-qa.md`
+14. `docs/motion-sweep-plan.md`
+15. `docs/motion-qa-results.md`
+16. current relevant assembly/part sources.
 
-When changing geometry, use the stable part IDs from `PARTS.md` and interface IDs from `INTERFACES.md` in reasoning/commit notes where practical.
+## Current HOLD / VERIFY gates
 
-## Current HOLD / VERIFY items
+### `HOLD-MOTOR-DIMS`
+Measure both actual 28BYJ-48 clones before production print.
 
-### HOLD-MOTOR-DIMS
+### `HOLD-PRINT-FITS`
+Print the three calibration coupons and record raw results in `CALIBRATION.md` before changing shared fits.
 
-Measure the actual two 28BYJ-48 units before production print. Clone dimensions must not be assumed final.
+### `HOLD-AZ-AXLE`
+Freeze a mechanically sound AZ compound axle/support only after physical dry-fit (`I-006`, `K-004`).
 
-Affected interface family: `I-003`, `I-004`, `I-020`, `I-021` and downstream gearbox context.
+### `VERIFY-ALT-DRIVE`
+Physically verify Double-D pinion, ALT shoulder axle, Ø8 output bore/spacer, grub-screw clamp and axial endplay.
 
-### HOLD-PRINT-FITS
+### `VERIFY-PAYLOAD-ADJUSTMENT`
+Verify actual 1/4-20 bolt/knob fit, full screw-center travel, final clamp preload, and no payload translation/yaw/slip after tightening. Loose balancing remains operator-constrained.
 
-Calibrate printer/material-dependent fits before the complete print set.
+### `VERIFY-PAYLOAD-ENVELOPE`
+Model/verify the actual phone/camera/optic + adapter + cables before claiming unrestricted unattended full-range operation.
 
-Ready-to-print coupons:
+### `VERIFY-TABLETOP-STABILITY`
+Test actual payload CG, compliant feet/surface contact and overturn margin.
 
-```text
-src/calibration/mechanical_fit_coupon.scad
-src/calibration/fastener_fit_coupon.scad
-src/calibration/byj48_fit_coupon.scad
-```
+### `VERIFY-CABLE-MOTION`
+When real cables/connectors/electronics are introduced, add their envelopes and re-run affected state-space QA.
 
-Record raw results in `CALIBRATION.md` before changing shared parameters.
-
-### HOLD-AZ-AXLE
-
-Freeze the AZ compound-gear intermediate axle only after physical fit validation. Primary contract: `I-006`.
-
-### VERIFY-ALT-DRIVE
-
-Physically verify motor shaft / Double-D pinion, M3 shoulder axle, Ø8 output bore/spacer and grub-screw clamp. Primary contracts: `I-021`, `I-023`, `I-025`.
-
-### VERIFY-TABLETOP-STABILITY
-
-The Ø190 tabletop base is CAD-integrated through `I-028`, but real stability depends on payload CG, rubber feet and surface.
-
-## Physical validation before production print
-
-At minimum:
-
-- measure both 28BYJ-48 motors with calipers;
-- measure the actual 608ZZ bearings and Ø8 shaft;
-- print the three calibration coupons using the intended production material/profile;
-- select verified bearing, shaft, screw and captive-nut fits;
-- select the verified Double-D shaft clearance;
-- update `src/config.scad` only through the interface/invalidation procedure;
-- re-QA affected parts and assemblies after changed measurements;
-- re-run motion QA if a changed parameter affects the motion envelope;
-- dry-fit the AZ compound axle support and ALT output stack;
-- dry-fit the complete mount;
-- verify balance and tabletop stability with the actual payload;
-- freeze final fastener lengths and BOM only after physical validation.
-
-## Next recommended engineering sequence
+## Next engineering sequence
 
 ```text
-measure real hardware
+measure real motors / bearings / shaft / payload hardware
 → print 3 calibration coupons
-→ record measurements/fits
-→ update shared parameters
-→ invalidate/re-QA affected interfaces and parts
-→ print functional AZ/ALT interface parts
-→ full dry-fit
-→ real motion/balance/tabletop tests
-→ freeze production BOM and print set
+→ record measurements and selected fits
+→ update shared parameters via invalidation map
+→ re-QA affected parts/state space
+→ print functional interface parts
+→ complete physical dry-fit
+→ verify payload clamp/no-slip + real payload envelope
+→ verify full physical motion and tabletop stability
+→ freeze final fastener lengths / BOM / production print set
 ```
-
-Until physical measurements arrive, additional CAD geometry is optional accessory development rather than a blocker for the core mount.
 
 ## Continuity invariant
 
-A future chat must be able to continue this project from the repository alone. Any design/process decision needed later must be committed before the step is considered complete.
+Anything required by a future fresh session must be committed before an engineering step is considered complete.
