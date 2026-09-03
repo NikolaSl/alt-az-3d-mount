@@ -2,21 +2,21 @@
 
 This is the project-specific application of [`MOTION_QA_PROTOCOL.md`](../MOTION_QA_PROTOCOL.md) and [`MECHANICAL_INTEGRITY_PROTOCOL.md`](../MECHANICAL_INTEGRITY_PROTOCOL.md).
 
-The mount must not be accepted from a few static poses alone. QA covers operational axes, adjustment travel, relevant coupled states, internal solid-pair interference and the physical constraint chains that enforce the intended degrees of freedom.
+The mount must not be accepted from a few static poses alone. QA covers operational axes, adjustment coordinates, relevant coupled states, internal solid-pair interference and the physical constraint chains that enforce claimed degrees of freedom.
 
 ## State/constraint summary
 
 ```text
-M-AZ               operational rotation     0° .. 360° continuous
-M-ALT              operational rotation    -20° .. +90°
-M-PAYLOAD-SLIDE    balance adjustment       PAYLOAD_SLIDER_MIN_Y .. PAYLOAD_SLIDER_MAX_Y
+M-AZ               operational rotation       0° .. 360° continuous
+M-ALT              operational rotation      -20° .. +90°
+M-PAYLOAD-SLIDE    manual screw-center state  PAYLOAD_SLIDER_MIN_Y .. PAYLOAD_SLIDER_MAX_Y
 ```
 
 Constraint IDs are defined in `INTERFACES.md`. In particular:
 
-- AZ rotation must be physically constrained to one rotational DOF by the central axis + supported turntable/glide system;
-- ALT rotation must be physically constrained by the Ø8 shaft + two separated 608 bearings + axial retention;
-- payload balancing travel exists only while the 1/4-20 clamp is loosened; the screw shank/slot constrains the adjustment path and tightening removes the translation.
+- AZ rotation is physically constrained to one rotational DOF by the central axis + supported turntable/glide system;
+- ALT rotation is physically constrained by the Ø8 shaft + two separated 608 bearings + axial retention;
+- payload balancing is a manual setup state: the 1/4-20 shank/slot constrains the **screw center** to the slot path, but a payload held by only that loose screw may still yaw; the operator supplies that missing orientation constraint during setup, and tightening must lock the final pose.
 
 ## M-ALT — altitude axis
 
@@ -42,7 +42,7 @@ Automated structural sweep:
 - test payload structural body against yoke/ALT gearbox and conservative lower structure;
 - inspect bearing/shaft/output-stack coherence and physical retention separately from pure collision distance.
 
-## M-PAYLOAD-SLIDE — balancing adjustment
+## M-PAYLOAD-SLIDE — manual balancing coordinate
 
 The payload screw center can move through the usable centerline travel of the 48 mm slot:
 
@@ -52,9 +52,11 @@ PAYLOAD_SLIDER_MIN_Y .. PAYLOAD_SLIDER_MAX_Y
 
 The usable center travel is derived from slot length minus screw-clearance diameter; the screw center is not allowed to move beyond the end-circle centers.
 
+`M-PAYLOAD-SLIDE` deliberately models the **slot-constrained screw-center coordinate**, not a claim that the complete loose payload has a unique one-dimensional trajectory. A single screw does not prevent payload yaw while loosened. During manual balancing the operator holds/aligns the payload; if future requirements need self-guided/repeatable translation, an anti-rotation guide/second locator must be designed and QA'd.
+
 ### Internal solid-pair sweep
 
-`tools/payload_adjustment_qa.py` sweeps the complete adjustment travel at 0.5 mm intervals including both endpoints.
+`tools/payload_adjustment_qa.py` sweeps the complete screw-center travel at 0.5 mm intervals including both endpoints.
 
 Forbidden/clearance checks include:
 
@@ -67,18 +69,20 @@ Intentional relationships explicitly excluded from forbidden-overlap testing:
 - knob top clamping against plate underside (`INTENDED_CONTACT` when tightened);
 - ALT shaft inside split-clamp bores (`KINEMATIC/MATING_CONTACT`).
 
+The loose external payload's yaw envelope is not proven by this fastener-only sweep; it is a payload-specific/manual setup consideration and must be modeled conservatively if the attached payload can approach the yoke/gearbox during balancing.
+
 ### Operational × adjustment grid
 
 The adjustable fastener also receives the ALT transform. Therefore `tools/motion_qa.py` checks the complete sampled Cartesian grid:
 
 ```text
 ALT = -20° .. +90° every 1°
-PAYLOAD_SCREW_Y = complete slot travel every 0.5 mm
+PAYLOAD_SCREW_Y = complete screw-center travel every 0.5 mm
 ```
 
 against the upper fixed structure, lower conservative envelope and clearance-expanded lower envelope.
 
-This prevents a default balance position from hiding a collision at another legal adjustment.
+This prevents a default balance position from hiding a fastener collision at another legal screw-center position.
 
 ## M-AZ — azimuth axis
 
@@ -94,7 +98,7 @@ Automated/compile sweep:
 - explicitly include 0°/360° wrap;
 - use finer sampling if non-axisymmetric fixed geometry/cabling is introduced.
 
-The current rigid collision proof uses rotational symmetry: yoke, payload and ALT gearbox/fastener rotate together, while the conservative lower obstruction is rotationally symmetric. Future fixed cables, connectors, hard stops or electronics invalidate that proof until modeled and re-QA'd.
+The current rigid collision proof uses rotational symmetry: yoke, mount payload structure and ALT gearbox/fastener rotate together, while the conservative lower obstruction is rotationally symmetric. Future fixed cables, connectors, hard stops or electronics invalidate that proof until modeled and re-QA'd.
 
 ## Coupled AZ × ALT configurations
 
@@ -109,7 +113,7 @@ ALT = -20°, 0°, 45°, 90°
 
 This yields 32 coupled AZ/ALT configurations.
 
-Additionally, the actual full assembly must compile at both payload-slider endpoints for critical ALT states. If a future adjustment can extend outside the conservative payload envelope, include it in the larger Cartesian grid rather than only endpoint samples.
+Additionally, the actual full assembly must compile at both payload screw-center endpoints for critical ALT states. If a future adjustment/payload can extend outside the conservative mount envelope, include it in the larger Cartesian grid rather than only endpoint samples.
 
 ## Solid-body exclusion rule
 
@@ -119,9 +123,11 @@ Do not union all members of a moving subassembly and assume that proves self-cle
 
 Where an exact purchased body is not modeled, use a conservative hardware envelope including screw heads, nuts, washers, shafts and protrusions that can cause interference.
 
+The eventual real phone/camera/optics is also a solid body. The current mount-structure QA does not prove clearance for every arbitrary external payload. Before a specific payload configuration is accepted for unattended full-range operation, model its conservative envelope (including adapter/cables) or restrict/physically verify the allowed motion range.
+
 ## Physical constraint / DOF checks
 
-The state sweep is not sufficient by itself. Review that each trajectory is mechanically realizable:
+The state sweep is not sufficient by itself. Review that each claimed trajectory is mechanically realizable:
 
 ### AZ
 
@@ -137,17 +143,19 @@ The state sweep is not sufficient by itself. Review that each trajectory is mech
 - payload clamps transmit payload torque to the shaft;
 - gearbox output transmits torque without using the motor shaft as payload support.
 
-### Payload balance adjustment
+### Payload balance setup
 
-- when loosened, slot/screw geometry constrains adjustment primarily along slot Y;
-- screw/knob/payload remain captured through the plate;
-- slot ends bound usable translation;
-- when tightened, clamp preload removes adjustment translation and resists payload rotation/slip;
-- real payload threaded interface and clamp preload remain physical dry-fit/load gates.
+- while loose, the slot/screw constrains the **screw center** transversely and bounds its Y travel;
+- the complete payload is not self-guided against yaw by a single screw; the operator/fixture role is explicit;
+- screw/knob remain captured through the plate;
+- slot end-circle centers bound the modeled screw-center coordinate;
+- when tightened, clamp preload must remove screw-center translation and payload yaw/slip;
+- real payload threaded interface and clamp preload remain physical dry-fit/load gates;
+- a future requirement for repeatable/self-guided translation requires an anti-rotation guide and new `K-*` constraint contract.
 
 ## Tabletop-specific checks
 
-For `A-TABLETOP-FULL`, every critical ALT/adjustment state must remain clear of the tabletop support envelope.
+For `A-TABLETOP-FULL`, every critical mount ALT/adjustment state must remain clear of the tabletop support envelope.
 
 Rigid CAD collision checks do not establish overturn stability. Physical tabletop verification still requires actual payload mass/CG, worst ALT orientation, all feet contacting, no rocking and acceptable overturn margin.
 
@@ -157,24 +165,26 @@ Retain/regenerate at least:
 
 - lower and upper ALT limits;
 - neutral/reference pose;
-- payload slider minimum and maximum at critical ALT poses;
+- payload screw-center minimum and maximum at critical ALT poses;
 - closest-clearance states reported by FCL;
 - representative coupled AZ/ALT poses;
 - guard-off view of ALT drive when useful;
 - section/cutaway through shaft + payload knob/bolt adjustment;
 - machine-readable list of sampled operational/adjustment states and pass/fail results;
-- documented constraint/DOF register and any physical verification still pending.
+- documented constraint/DOF register and any operator/external constraints;
+- explicit scope note for the actual payload envelope/cables if they are not modeled.
 
 ## Acceptance rule
 
-`A-FULL` / `A-TABLETOP-FULL` may be marked mechanically motion-QA-passed only after:
+`A-FULL` / `A-TABLETOP-FULL` may be marked **mount-structure** mechanically motion-QA-passed only after:
 
 1. full M-ALT sweep is complete;
 2. full M-AZ sweep is complete or a documented conservative symmetry proof applies;
 3. coupled AZ/ALT critical grid is complete;
-4. full M-PAYLOAD-SLIDE internal sweep is complete;
+4. full M-PAYLOAD-SLIDE internal fastener sweep is complete;
 5. payload fastener ALT×slider external state grid is complete;
-6. no forbidden rigid-body conflict is present;
-7. all required clearances remain satisfied;
-8. physical constraint chains/retention are coherent throughout the states;
-9. non-CAD constraints such as cable behavior, stiffness/strength and tabletop stability remain explicit pending gates where applicable.
+6. no forbidden modeled rigid-body conflict is present;
+7. all required modeled clearances remain satisfied;
+8. physical constraint chains/retention are coherent throughout claimed operational states;
+9. manual setup states do not masquerade as self-guided mechanisms;
+10. non-CAD constraints such as actual payload envelope/cables, stiffness/strength and tabletop stability remain explicit pending gates where applicable.
