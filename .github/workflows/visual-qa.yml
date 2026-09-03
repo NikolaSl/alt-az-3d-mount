@@ -1,0 +1,56 @@
+name: Visual geometric QA
+
+on:
+  workflow_dispatch:
+    inputs:
+      scad_path:
+        description: "OpenSCAD entry point to validate"
+        required: true
+        default: "src/parts/payload_clamp_upper.scad"
+        type: string
+      preview_only:
+        description: "Skip full STL/mesh/sections (assembly review mode)"
+        required: true
+        default: false
+        type: boolean
+      expected_components:
+        description: "Expected connected components for full mesh QA"
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install OpenSCAD and QA runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openscad xvfb
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-qa.txt
+      - name: Run visual/geometric QA
+        env:
+          SCAD_PATH: ${{ inputs.scad_path }}
+          PREVIEW_ONLY: ${{ inputs.preview_only }}
+          EXPECTED_COMPONENTS: ${{ inputs.expected_components }}
+        run: |
+          ARGS=("$SCAD_PATH" --expected-components "$EXPECTED_COMPONENTS")
+          if [ "$PREVIEW_ONLY" = "true" ]; then ARGS+=(--preview-only); fi
+          python tools/visual_qa.py "${ARGS[@]}"
+      - name: Upload QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-qa-${{ github.run_id }}
+          path: build/qa
+          if-no-files-found: warn
+          retention-days: 30
