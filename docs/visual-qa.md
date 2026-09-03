@@ -1,69 +1,116 @@
-# Visual QA loop
+# Visual / geometric / context QA loop
 
-Every mechanical design iteration is validated before it is merged.
+Every mechanical design iteration is validated before it is accepted. Use this with [`MECHANICAL_INTEGRITY_PROTOCOL.md`](../MECHANICAL_INTEGRITY_PROTOCOL.md) and [`MOTION_QA_PROTOCOL.md`](../MOTION_QA_PROTOCOL.md).
 
-For an individual printable part the minimum QA loop is:
+## Individual printable part
 
-1. Export the OpenSCAD entry point to STL with full CGAL render and `--hardwarnings`.
-2. Require OpenSCAD `Simple: yes` and a watertight mesh.
-3. Render isometric, top, bottom, front and right-side views.
-4. Produce center X/Y cross-sections from the exported STL.
-5. Inspect the resulting contact sheet for unintended geometry, inaccessible fasteners,
-   collisions, thin walls and wrong orientation.
-6. Iterate and repeat the checks after every geometry change.
+Minimum loop:
 
-Run full QA for an individual part from the repository root:
+1. Export the SCAD entry point with full render + hard warnings.
+2. Require simple/manifold geometry where reported, watertight mesh and expected connected-component count.
+3. Check plausible bounding box/orientation.
+4. Render ISO, top, bottom, front, back, left and right views.
+5. Produce X/Y/Z center sections.
+6. Add critical offset sections through hidden bearing seats, shaft bores, fastener stacks, nut traps, thin walls and interfaces.
+7. Repeat after geometry changes.
+
+Run from repository root:
 
 ```bash
 python3 tools/visual_qa.py src/parts/az_turntable.scad
 ```
 
-Large assemblies can make a full CGAL union unnecessarily expensive. Their printable
-components must pass full QA individually; the assembly then gets a standard multi-angle
-visual pass with:
+## Neighbor/context QA includes real physical solids
 
-```bash
-python3 tools/visual_qa.py src/assemblies/az_yoke_payload.scad --preview-only
+A printable part is not validated in isolation from hardware that can occupy space. Context QA must include directly interacting neighbors and realistic/conservative envelopes for relevant purchased/fabricated bodies:
+
+```text
+shafts
+bearings
+screw heads + shanks
+nuts / washers / inserts
+motors
+payload attachment hardware
+connectors / cable exits
+other bodies that can interfere
 ```
 
-Assembly QA is supplemented by executable OpenSCAD `assert()` clearance checks and, for
-moving mechanisms, views with covers removed so shaft/gear relationships remain visible.
+Check forbidden overlaps, required clearances, intended fits/contacts/passages, axis/hole alignment, fastener insertion/thread engagement, tool access, assembly order, removal/service path and material around holes/pockets.
 
-## Mandatory motion QA for moving mechanisms
+A hole center is not a complete fastener model if its head, nut, washer or protruding shank can hit something.
 
-Any assembly containing one or more moving degrees of freedom must also follow
-[`MOTION_QA_PROTOCOL.md`](../MOTION_QA_PROTOCOL.md).
+## Support / constraint / load-path review
 
-For this mount, the current concrete two-axis sweep and coupled-pose plan is
-[`docs/motion-sweep-plan.md`](motion-sweep-plan.md).
+Visual/context QA must make the real mechanism explainable, not merely animated.
 
-A few named poses are not sufficient. The QA gate must cover the **complete allowed motion
-range** with a repeatable sampled sweep, while explicitly checking both end limits, neutral
-or reference pose, known worst-case configurations, closest-clearance positions and any
-coupled multi-axis combinations that can create a conflict.
+For each installed body/subassembly identify:
 
-For every sampled configuration inspect or programmatically verify, as applicable:
+- what supports gravity/radial/axial load;
+- what reacts drive torque;
+- what removes each unintended translation/rotation;
+- what retains the body axially/laterally;
+- what bounds travel;
+- whether support spacing is plausible for the expected moment;
+- whether a motor shaft, gear axle or thin printed wall is accidentally carrying structural load;
+- whether redundant constraints require impossible alignment.
 
-- moving-to-fixed and moving-to-moving collisions;
+Use sections/cutaways/exploded context where necessary. A CAD `rotate()` or `translate()` does not prove the real body is constrained to that path.
+
+## Assembly QA and internal interference
+
+Large assemblies can use preview-only rendering when their individual printable parts already passed full mesh QA:
+
+```bash
+python3 tools/visual_qa.py src/assemblies/payload_stage.scad --preview-only
+```
+
+Preview-only does **not** replace physical interaction QA.
+
+Bodies sharing the same assembly/motion transform can still intersect one another. Therefore:
+
+- do not rely on one monolithic moving-body union to prove internal clearance;
+- classify intentional fit/contact/passage relationships explicitly;
+- otherwise treat physical overlap as forbidden;
+- generate a critical section through a hidden suspected pair.
+
+The payload knob/ALT-shaft defect is the reference example: both belonged to the rotating payload stage, so ordinary moving-vs-fixed QA missed their internal overlap. `payload_adjustment_section.scad` and the dedicated FCL sweep now cover that relationship.
+
+## Moving / adjustable / configuration states
+
+A few named poses are insufficient. QA must cover the complete mechanically relevant state space with justified sampling/proofs:
+
+```text
+operational DOFs
+× adjustment coordinates / DOFs
+× relevant discrete configurations
+× relevant setup/service states
+```
+
+For each state verify as applicable:
+
+- moving↔fixed and moving↔moving collision;
+- **same-transform internal** collision;
 - required minimum clearance;
+- fastener/hardware envelopes;
 - payload/counterweight swept envelope;
-- gear, shaft and bearing relationships;
+- gear/shaft/bearing relationships;
 - guard/cover clearance;
-- cable/hose bend, twist and extension;
-- hard-stop/overtravel behavior;
-- interface-specific invariants.
+- cable/hose bend/twist/extension;
+- hard-stop/retention behavior;
+- constraint-chain coherence.
 
-Sampling must be adaptive: use a finer step near small clearances or complicated geometry.
-Where practical, swept-volume analysis should supplement pose sampling so a narrow
-intermediate conflict is not missed between two samples.
+Endpoints are mandatory. Refine sampling near small clearances or transitions. Swept-volume/conservative-envelope reasoning should supplement sampling where useful.
 
-If a geometry, axis, motion limit, payload envelope or neighboring clearance changes, the
-relevant motion QA is invalidated and the **whole affected sweep must be repeated**, not
-only the pose where the earlier problem was found.
+Manual setup coordinates must not masquerade as self-guided DOFs. For the current payload slot, QA sweeps the physically constrained screw-center coordinate while operator-controlled loose payload yaw is explicitly outside the claim.
 
-Outputs are written under `build/qa/<part>/` and include the STL and sections in full mode,
-PNG views in both modes, `qa.json`, and `contact-sheet.png`.
+When any solid envelope, axis, support chain, state range, payload envelope, fastener envelope or neighboring clearance changes, invalidate and repeat the **complete affected QA scope**, not only the earlier failing pose.
 
-The script needs OpenSCAD, Xvfb, Python 3, Pillow, matplotlib and trimesh.
-Generated QA artifacts are intentionally not committed; the OpenSCAD source remains the
-authoritative design and the browser validator independently recompiles it to STL.
+## Current tooling/evidence
+
+- `tools/visual_qa.py` → STL/mesh stats, seven views, X/Y/Z sections, contact sheet, `qa.json`;
+- `tools/motion_qa.py` → structural + coupled state-space FCL QA;
+- `tools/payload_adjustment_qa.py` → internal fastener↔shaft/clamp minimum-distance sweep;
+- `.github/workflows/visual-qa.yml` → reproducible full payload part regression + context/section preview;
+- `.github/workflows/motion-qa.yml` → reproducible state-space QA.
+
+Generated evidence lives under `build/`/Actions artifacts and is derived data. Repository SCAD, shared parameters, interface/constraint contracts and committed QA procedures remain authoritative.
