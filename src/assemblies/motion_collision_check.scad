@@ -1,15 +1,15 @@
 // Reusable diagnostic geometry for automated motion QA.
-// Modes 0/1 export one boolean intersection; modes 10/11/12 export reusable
-// collision meshes for the fast Python/FCL motion sweep.
+// Modes 0/1 export boolean intersections; modes 10+ export reusable collision
+// meshes for fast Python/FCL state-space sweeps.
 
 include <../config.scad>
 use <yoke_stage.scad>
+use <../lib/payload_fastener.scad>
 use <../parts/alt_gearbox_plate.scad>
 use <../parts/alt_gearbox_guard.scad>
 use <../parts/payload_clamp_lower.scad>
 use <../parts/payload_clamp_upper.scad>
 use <../parts/payload_plate.scad>
-use <../parts/camera_screw_knob.scad>
 
 AZ_ANGLE = is_undef(AZ_ANGLE) ? 0 : AZ_ANGLE;
 ALT_ANGLE = is_undef(ALT_ANGLE) ? 0 : ALT_ANGLE;
@@ -31,16 +31,21 @@ module alt_drive_to_world_qa(axis_z) {
     ]) children();
 }
 
-module payload_collision_body_local(payload_screw_y = PAYLOAD_SCREW_Y) {
+module payload_structural_body_local() {
     // Steel ALT shaft is omitted from this *external* obstruction body because
-    // shaft/clamp/bearing engagement is intentional contact. Internal solid-pair
-    // exclusion is checked separately by payload_adjustment_collision_check.scad.
+    // shaft/clamp/bearing engagement is intentional contact. The adjustable
+    // screw/knob is exported separately so its full adjustment range can be
+    // coupled with ALT rather than hidden inside one default-pose union.
     for (x = [-PAYLOAD_CLAMP_X, PAYLOAD_CLAMP_X]) {
         translate([x, 0, -PAYLOAD_CLAMP_LOWER_H]) payload_clamp_lower();
         translate([x, 0, 0]) payload_clamp_upper();
     }
     translate([0, 0, PAYLOAD_PLATE_Z]) payload_plate();
-    translate([0, payload_screw_y, PAYLOAD_KNOB_Z]) camera_screw_knob();
+}
+
+module payload_collision_body_local(payload_screw_y = PAYLOAD_SCREW_Y) {
+    payload_structural_body_local();
+    payload_fastener_body(y = payload_screw_y);
 }
 
 module moving_payload_world(az = AZ_ANGLE, alt = ALT_ANGLE,
@@ -109,11 +114,13 @@ if (CHECK_MODE == 0)
 else if (CHECK_MODE == 1)
     collision_lower();
 else if (CHECK_MODE == 10)
-    payload_collision_body_local();
+    payload_structural_body_local();
 else if (CHECK_MODE == 11)
     fixed_upper_obstructions(az = 0);
 else if (CHECK_MODE == 12)
     conservative_lower_obstructions(tabletop = WITH_TABLETOP,
                                     margin = CLEARANCE_MARGIN);
+else if (CHECK_MODE == 13)
+    payload_fastener_body(y = 0);
 else
     assert(false, "Unknown CHECK_MODE in motion_collision_check.scad");
