@@ -1,270 +1,172 @@
-# Repository Contract — persistent memory, mobile review, and build continuity
+# Repository Contract — persistent memory, mechanical integrity and mobile review
 
-This file is a **mandatory process contract** for this project and a reusable pattern for future parametric mechanical-design repositories.
-
-The repository is the persistent engineering memory. Chat history is disposable working context.
+This file is a **mandatory process contract** for this project. The repository is the persistent engineering memory; chat history is disposable working context.
 
 ## 1. Repository-first continuity
 
-No decision required to continue the engineering work may exist only in chat.
-
-Before a logical design step is considered complete, all information needed to resume it in a completely new chat must be committed to the repository.
+No decision required to continue engineering work may exist only in chat. Before a logical design step is accepted, commit enough information that a completely fresh human/AI session can reconstruct the design and continue safely.
 
 The repository must preserve, as applicable:
 
-- machine requirements and constraints;
+- machine requirements and load cases;
 - complete planned part decomposition;
-- interface contracts and dependency/build order;
+- interface contracts and stable IDs;
+- physical solid-body relationship classifications;
+- physical constraint/DOF and support/load-path contracts;
 - shared parameters, datums, fits and derived dimensions;
-- part/project status;
-- OpenSCAD source for parts and assemblies;
-- visual/geometric/motion QA tooling, policy and accepted checkpoints;
+- dependency/build order and part status;
+- current partial/full assembly;
+- OpenSCAD source for parts, hardware envelopes and assemblies;
+- visual/geometric/mechanical-integrity/motion QA procedures and accepted evidence;
 - unresolved HOLD/VERIFY items and reasons;
-- live printable-part list and non-printed BOM;
-- tools, consumables and physical fit tests;
-- physical assembly order;
+- live printable list, purchased/fabricated BOM, tools and consumables;
+- physical calibration/fit state;
+- exact assembly/service sequence;
 - browser/mobile review mechanism and performance rules.
-
-A chat may discuss alternatives, but once a decision affects future work it must be written into the repository.
 
 ## 2. Fresh-chat bootstrap
 
-Read the repository before making new geometry decisions.
-
-Recommended order:
+Read repository state before making geometry decisions. Recommended order:
 
 1. `REPOSITORY_CONTRACT.md`
 2. `DESIGN_PROTOCOL.md`
-3. `MOTION_QA_PROTOCOL.md`
-4. `BROWSER_REVIEW_PROTOCOL.md`
-5. `PROJECT_STATE.md`
-6. `README.md`
-7. `PARTS.md`
-8. `INTERFACES.md`
-9. `ASSEMBLY.md`
-10. `CALIBRATION.md` where present
-11. `src/config.scad`
-12. current QA result documents/scripts
-13. relevant assemblies
-14. exact neighboring part sources for the next task
+3. `MECHANICAL_INTEGRITY_PROTOCOL.md`
+4. `MOTION_QA_PROTOCOL.md`
+5. `BROWSER_REVIEW_PROTOCOL.md`
+6. `PROJECT_STATE.md`
+7. `README.md`
+8. `PARTS.md`
+9. `INTERFACES.md`
+10. `ASSEMBLY.md`
+11. `CALIBRATION.md`
+12. `src/config.scad`
+13. current QA result documents/scripts
+14. relevant current assemblies and exact neighboring part sources.
 
-Do not infer current design state from chat snippets when the repository can answer it.
+Do not infer current design state from old chat snippets when the repository can answer it.
 
-## 3. Atomic part acceptance
+## 3. Mechanical-integrity invariant
 
-A new or materially changed printable part is **not DONE merely because a `.scad` file exists**.
+The default physical rule is:
+
+> If an explicit interface does not classify a pair as an intended fit/contact/passage/embedded/bonded/kinematic relationship, two physical solids may not occupy the same volume.
+
+This applies to printed parts **and** purchased hardware: shafts, bearings, screw heads/shanks, nuts, washers, motors, payload envelopes and any body capable of interference.
+
+Bodies that share the same operational transform are not exempt. Internal collisions inside a moving subassembly must be checked explicitly rather than hidden by unioning the bodies into one collision mesh.
+
+See `MECHANICAL_INTEGRITY_PROTOCOL.md`.
+
+## 4. Real trajectory / DOF invariant
+
+A CAD `rotate()` or `translate()` is not a physical mechanism. A free rigid body begins with six rigid-body DOFs. For every installed body/subassembly, the design must identify bearings, shafts, guides, slots, hinges, rails, linkages, locators, fasteners, retention/end stops or equivalent real geometry that removes unwanted DOFs and leaves only the intended movement.
+
+The repository must preserve the associated support/load path. Underconstraint and impossible overconstraint are both design failures.
+
+## 5. Complete state-space rule
+
+Mechanical QA includes:
+
+```text
+operational DOFs
+× adjustment DOFs
+× relevant discrete configurations
+× relevant assembly/service states
+```
+
+For this mount that includes at least AZ, ALT and the payload balancing slider. Endpoints are mandatory. If exhaustive Cartesian coverage is impractical, a documented conservative/symmetry/swept-volume proof is required; silent omission is not acceptable.
+
+## 6. Atomic part acceptance
+
+A new or materially changed printable/mechanical part is **not DONE merely because a `.scad` file exists**.
 
 Acceptance is the complete transaction:
 
 ```text
 part source
-+ shared parameters/interfaces
-+ per-part QA
-+ neighboring/context QA
++ shared parameters / interface contracts
++ solid-body relationship classification
++ physical support / constraint / load-path definition
++ per-part geometric/visual/section QA
++ neighboring/context + hardware-envelope QA
 + partial/full assembly integration
-+ full-range motion QA when relevant
-+ ASSEMBLY/BOM update
-+ PARTS/INTERFACES status update
-+ PROJECT_STATE/HOLD update
-+ browser publication/reviewability
++ pairwise mechanical-integrity checks
++ full affected operational/adjustment state-space QA
++ PARTS / INTERFACES / constraint status update
++ ASSEMBLY / live BOM update
++ PROJECT_STATE / HOLD update
++ browser publication / human reviewability
 = accepted design step
 ```
 
-If one required item is missing, the part remains provisional.
+If one required item is missing, the part remains provisional or `NEEDS_REVALIDATION`.
 
-For moving mechanisms, a few attractive static poses are not a substitute for full-range motion QA.
+## 7. Browser publication is part of integration
 
-## 4. Browser publication is part of integration
+Human review must work from an ordinary modern phone/tablet browser. The reusable rules are in `BROWSER_REVIEW_PROTOCOL.md`.
 
-Human review must work from an ordinary modern phone/tablet browser. The reusable technical rules are in `BROWSER_REVIEW_PROTOCOL.md`.
+For this project GitHub Pages must:
 
-For this project, GitHub Pages must:
-
-- snapshot `src/` from the deployed commit;
-- build a manifest of renderable SCAD entry points;
-- record SHA-256 source hashes;
-- record recursive `include`/`use` dependency closures;
+- snapshot exact `src/` from the deployed commit;
+- build renderable-entry manifest and recursive dependency closures;
+- record/verify SHA-256 source hashes;
 - expose exact source-at-commit links;
-- run OpenSCAD WebAssembly in a **background Web Worker**, never on the UI thread;
-- use the pinned modern OpenSCAD build and Manifold backend;
-- stream phase/diagnostic information where available;
+- run pinned modern OpenSCAD WebAssembly + Manifold in a **background Web Worker**, never the UI thread;
 - show elapsed time and honest indeterminate progress during opaque geometry solving;
-- allow Cancel by terminating the worker;
+- provide diagnostics and Cancel;
 - display generated binary STL with Three.js;
-- link project state, assembly/BOM, calibration and QA documents.
+- keep parts, useful subsystems, full assemblies and QA review entry points browser-renderable.
 
-The normal review path is a single source-derived browser path:
+The repository source is authoritative; browser STL is derived review evidence.
 
-```text
-repository commit
-→ Pages source snapshot + dependency manifest
-→ phone/browser Web Worker
-→ verified required source files only
-→ OpenSCAD WebAssembly + Manifold
-→ binary STL
-→ Three.js review
-```
+## 8. Live assembly/BOM rule
 
-**CI-prebuilt STL previews are not part of the normal architecture.** They may be introduced only as a documented performance exception if measured browser rendering becomes impractical again on intended devices.
+`ASSEMBLY.md` is a live engineering product, not end-of-project documentation. Whenever an accepted part/interface/constraint changes, immediately update affected quantities, purchased/fabricated hardware, fastener lengths, supports/retention roles, tools/consumables, fit tests, mating relationships, assembly order, tool access, motion/adjustment checks and service constraints.
 
-Every printable part and useful subsystem/full assembly must have an appropriate published OpenSCAD entry point.
+At every checkpoint it must answer: **what must be printed, bought, fabricated and prepared to build the best-known machine now?**
 
-### Browser integration gate
+## 9. Assembly sequence is a design constraint
 
-After a major part/subsystem integration:
+A geometrically valid final arrangement is unacceptable if it cannot actually be assembled, tightened, adjusted or serviced. Context QA must consider intermediate assembly states, fastener insertion, bearing installation, tool reach, trapped parts, disassembly path, temporary loss of support and service movement.
 
-1. ensure a manifest-published SCAD entry exists;
-2. ensure Pages deployment succeeds;
-3. load the exact deployed source snapshot;
-4. render the part/assembly in the browser worker;
-5. confirm the UI remains responsive;
-6. confirm elapsed-time/progress UI and Cancel operate;
-7. inspect orbit/zoom on a phone-sized viewport when practical;
-8. use that visualization as a human review gate before expensive printing.
+## 10. Controlled backtracking
 
-A design that cannot be reviewed through the browser surface is not fully integrated.
+When a downstream part cannot satisfy its contract:
 
-## 5. Mobile-first operating model
+1. identify the failing interface/solid relation/constraint/motion ID;
+2. find the nearest upstream owner;
+3. change the smallest upstream scope that resolves it;
+4. mark affected descendants `NEEDS_REVALIDATION`;
+5. re-run geometric/integrity/state-space QA in dependency order;
+6. update assembly/BOM/state before continuing forward.
 
-```text
-voice/chat on phone or tablet
-        ↓
-AI reads/modifies GitHub repository
-        ↓
-repository preserves engineering state
-        ↓
-GitHub Actions executes QA and publishes source/runtime
-        ↓
-mobile browser regenerates selected CAD in Web Worker
-        ↓
-human inspects generated model + QA/project state
-        ↓
-feedback returns through chat
-```
+Backtracking is minimal in scope, complete in validation.
 
-No desktop CAD application is required for routine review. A desktop remains useful for slicing, printer operation and optional local development.
+## 11. Human review gates
 
-## 6. `ASSEMBLY.md` is a live build product
+Stop for explicit human review at least after:
 
-`ASSEMBLY.md` evolves with the CAD, not at the end.
+- initial machine decomposition;
+- shared interface/constraint/parameter architecture;
+- each major subsystem integration;
+- large recursive backtracking;
+- changes to high-fanout validated interfaces/support chains;
+- before expensive/long physical prints;
+- before final production assembly.
 
-For every relevant part/subassembly it should preserve:
+Expose changed part/section, current assembly, relevant solid/constraint contracts, QA status, BOM/HOLDs and proposed next step.
 
-- printable source and quantity;
-- purchased/fabricated items;
-- fasteners, inserts, shafts, bearings, washers and nuts;
-- provisional versus frozen dimensions;
-- required tools/consumables;
-- mating parts and interface;
-- orientation/insertion direction;
-- assembly order;
-- tool/fastener access constraints;
-- lubrication/threadlocker/adhesive notes;
-- required fit/calibration tests;
-- motion/free-play checks;
-- service/disassembly constraints.
+## 12. Definition of done
 
-The guide describes how to physically build the **best-known machine at the current checkpoint**.
+A mechanical step is complete only when a future session can:
 
-## 7. Live BOM
-
-The BOM must always answer: “What must I print, buy, fabricate and prepare to build everything currently designed?”
-
-Keep separate categories for:
-
-- printable parts;
-- purchased mechanical components;
-- fasteners/hardware;
-- electronics when in scope;
-- raw stock;
-- consumables;
-- special tools;
-- optional items;
-- provisional items awaiting verification.
-
-Remove obsolete hardware after redesigns.
-
-## 8. Assembly sequence is a design constraint
-
-A geometrically valid part is not acceptable if the intended build sequence makes it impossible to assemble, service or move correctly.
-
-Reject designs where, for example:
-
-- a screw cannot be inserted/reached;
-- a bearing cannot be installed;
-- parts require impossible mutual insertion;
-- a tool cannot access a fastener;
-- a component becomes trapped too early;
-- a service part requires destructive disassembly;
-- a moving part collides outside its neutral pose.
-
-Context QA must include intermediate assembly states and the complete motion space.
-
-## 9. `PROJECT_STATE.md`
-
-This is the short resume checkpoint and must be updated at meaningful milestones/backtracking events.
-
-It must state at least:
-
-- current project phase;
-- trusted/full assemblies;
-- completed subsystems;
-- accepted motion-QA checkpoint;
-- browser-review architecture when relevant;
-- provisional/HOLD/BLOCKED interfaces;
-- next recommended engineering step.
-
-It is an index, not a replacement for source/BOM/interfaces/QA evidence.
-
-## 10. Human review checkpoints
-
-At major boundaries make the current state easy to inspect before proceeding deeper into the dependency graph.
-
-Expose:
-
-- current assembly/subassembly;
-- changed part;
-- useful sections/cutaways/context QA;
-- motion-QA summary when relevant;
-- changed parameters/interfaces;
-- `PROJECT_STATE.md`;
-- `ASSEMBLY.md` and BOM;
-- unresolved HOLD/VERIFY items;
-- proposed next step.
-
-Human review may approve, reject, redirect or request backtracking. Preserve that decision in the repository.
-
-## 11. Definition of done
-
-Another fresh session must be able to:
-
-1. understand why the part exists and its interfaces;
-2. regenerate geometry from source/common parameters;
-3. reproduce relevant visual/geometric QA;
-4. reproduce relevant motion QA;
+1. understand why the part exists and what it interfaces with;
+2. understand how it is supported/retained and what DOFs remain;
+3. regenerate it from source/shared parameters;
+4. reproduce relevant geometric, solid-pair and state-space QA;
 5. place it in the current assembly;
-6. render/review it in the mobile browser without freezing the UI;
-7. identify required non-printed items;
-8. follow the physical assembly procedure;
-9. know remaining risks/HOLD items;
-10. continue without recovering lost chat context.
-
-## 12. Browser scalability invariant
-
-Growing the repository must not slow every browser render merely because unrelated files were added.
-
-Preserve these invariants unless a demonstrably better architecture replaces them:
-
-```text
-CAD computation off UI thread
-+ recursive dependency-closure mounting
-+ modern pinned WASM renderer
-+ Manifold backend where supported
-+ binary STL transfer
-+ honest phase/elapsed progress
-+ cancellation
-+ exact-commit source integrity
-+ browser rendering as the normal path
-```
-
-If browser review becomes slow or unresponsive, treat that as an integration regression first. Only add CI-prebuilt geometry after measured evidence shows the optimized browser-worker path is still impractical.
+6. inspect it in the browser without freezing the page;
+7. identify required non-printed hardware and fasteners;
+8. physically integrate/service it using `ASSEMBLY.md`;
+9. know remaining HOLD/VERIFY items and proof limitations;
+10. continue the next dependency without recovering chat history.
