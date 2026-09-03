@@ -1,56 +1,67 @@
 # Motion QA Protocol for Parametric Mechanical Designs
 
-This document is intentionally **project-agnostic**. It defines the mandatory QA procedure for any parametric mechanical design containing moving parts. It is meant to be reused in future CAD/OpenSCAD projects together with `DESIGN_PROTOCOL.md`.
+This document is intentionally **project-agnostic**. It defines the mandatory QA procedure for any parametric mechanical design containing moving or adjustable parts. Use it together with `DESIGN_PROTOCOL.md` and `MECHANICAL_INTEGRITY_PROTOCOL.md`.
 
 ## Core rule
 
-A mechanism with moving parts is not motion-QA-passed because it looks correct in one neutral pose or in a few attractive screenshots.
+A mechanism is not motion-QA-passed because it looks correct in one neutral pose or a few screenshots.
 
-> Every degree of freedom must be validated over its complete intended motion envelope, including both end limits, intermediate configurations, known worst-case configurations and coupled positions with other moving axes.
+> Every mechanically relevant state variable must be validated over its complete intended range/state set, including both limits, intermediate configurations, known worst cases and relevant coupled combinations.
 
-Because a continuous motion contains infinitely many configurations, practical QA combines exact limit checks, adaptive sampled sweeps, swept-volume reasoning and explicit collision/clearance assertions.
+This includes not only motorized operational axes but also balancing slots, telescopic adjustments, movable clamps, removable configurations and service motions that can change solid-body relationships.
 
-## 1. Define a motion contract before testing
+A continuous configuration space contains infinitely many states, so practical QA combines exact limit checks, adaptive sampled sweeps, pairwise collision/distance checks, swept-volume reasoning, symmetry/analytic proofs where justified, and explicit assertions.
 
-For every degree of freedom record:
+## 1. Define motion and adjustment contracts before testing
 
-- motion ID;
-- moving assembly;
-- fixed/reference assembly;
-- axis/datum;
-- minimum allowed position;
-- maximum allowed position;
+For every operational or adjustment degree of freedom record:
+
+- stable motion/state ID;
+- moving body/assembly;
+- fixed/reference bodies;
+- **physical constraint chain that actually enforces the trajectory**;
+- axis/path datum;
+- minimum and maximum allowed position or discrete state set;
 - periodic/wrap behavior, if any;
 - normal operating range versus hard/physical limit;
 - required minimum clearances;
-- known collision-sensitive interfaces;
-- cable, hose, belt, wire or flexible-element constraints;
-- whether motion is independent or coupled with other axes.
+- collision-sensitive interfaces;
+- cable/hose/flexible-element constraints;
+- whether the variable is operational, adjustment, configuration or service;
+- coupling with other state variables;
+- retention/end-stop behavior.
 
-Examples:
+A CAD `translate()` or `rotate()` is not a physical motion constraint. The corresponding bearing, shaft, hinge, guide, rail, slot, linkage, flexure or other constraint must be identified as required by `MECHANICAL_INTEGRITY_PROTOCOL.md`.
+
+Motion limits and axis datums belong to shared parameters/interface contracts, not duplicated QA constants.
+
+## 2. Complete configuration space
+
+The QA state space is the combination of all mechanically relevant state variables:
 
 ```text
-M-ALT
-rotational
-axis = payload shaft
-range = -20° .. +90°
-minimum structural clearance = 1.5 mm
-critical neighbors = yoke arms, gearbox, cover
+operational DOFs
+× adjustment DOFs
+× discrete configurations
+× relevant service/assembly states
 ```
 
-```text
-M-SLIDE-X
-linear
-range = 0 .. 120 mm
-minimum structural clearance = 1.0 mm
-critical neighbors = frame, cable chain, end-stop bracket
-```
+Examples of adjustment/configuration variables that must not be ignored:
 
-Motion limits and axis datums should be owned by shared parameters/interface contracts, not copied as unrelated constants into QA scripts.
+- payload screw moving through a balancing slot;
+- telescopic length;
+- counterweight position;
+- movable clamp position;
+- focus travel;
+- belt/chain tensioner position;
+- guard installed/removed when removal changes support or clearance;
+- alternate adapter/payload geometry.
 
-## 2. Mandatory configurations
+If exhaustive Cartesian sampling is too costly, use documented critical combinations, conservative envelopes, adaptive refinement and swept-volume proofs. Never silently assume an adjustment remains safe because it shares the same operational transform as another body.
 
-Every motion QA must explicitly inspect at least:
+## 3. Mandatory states
+
+Every state variable must explicitly inspect at least:
 
 ```text
 minimum limit
@@ -58,164 +69,170 @@ maximum limit
 neutral/reference position
 all known kinematic transition points
 all known worst-case collision positions
-all positions where a moving part becomes tangent/closest to a neighbor
-all positions where cables/hoses reach maximum bend, twist or extension
+all closest-clearance/tangent positions
+all hard-stop/retention states
+all maximum cable bend/twist/extension states
 ```
 
-End points are mandatory. They must never be omitted simply because the mechanism is expected to operate mostly near its center position.
+Endpoints are mandatory.
 
-## 3. Sample the complete range, not only named poses
+## 4. Sample the complete range, not only named poses
 
 Named poses are human-review checkpoints, not a substitute for a sweep.
 
-For each one-dimensional motion, run an automated or repeatable sweep from minimum to maximum using an interval small enough that a narrow collision cannot plausibly occur between samples.
+For each one-dimensional variable, run an automated/repeatable sweep from minimum to maximum using a resolution small enough that a narrow conflict cannot plausibly hide between samples.
 
-The interval is adaptive:
+Sampling is adaptive:
 
-- coarse sampling is acceptable where clearances are large and geometry changes slowly;
-- use denser sampling near close clearances, contact transitions, over-center positions, singularities or complicated geometry;
-- if a collision boundary is detected, refine the interval around it until the transition is understood;
-- if the mechanism has a very small clearance relative to the local motion per step, reduce the step size.
+- coarse where geometry varies slowly and clearances are large;
+- denser near small clearances, contacts, singularities, over-center states or complex geometry;
+- refine around any collision/clearance boundary until understood;
+- reduce step if local movement per sample is large relative to required clearance.
 
-A useful initial engineering default for ordinary rotational mechanisms is often 2–5° and for ordinary linear mechanisms 0.5–2 mm, but these are **not universal acceptance limits**. The required resolution is determined by geometry and minimum clearance.
+Typical starting points such as 2–5° rotational or 0.5–2 mm linear are engineering conveniences, not universal pass limits.
 
-## 4. Collision and clearance checks at every sampled state
+## 5. Pairwise solid collision and clearance checks
 
-At each sampled configuration check, where applicable:
+At each sampled configuration instantiate the relevant physical solid bodies/envelopes and apply the relationship classification from `MECHANICAL_INTEGRITY_PROTOCOL.md`.
 
-- moving part ↔ fixed structure collision;
-- moving part ↔ other moving part collision;
-- self-intersection of the moving assembly;
-- required minimum clearance;
+Check:
+
+- every `FORBIDDEN_OVERLAP` pair for collision;
+- every `CLEARANCE` pair for required minimum distance;
+- intended contact/fit/fastener-passage pairs for their allowed relationship;
+- moving ↔ fixed collisions;
+- moving ↔ moving collisions;
+- **internal collisions among bodies sharing the same motion transform**;
+- self-intersection of linkages/subassemblies;
 - fastener/head/nut/washer clearance;
-- bearing/shaft axial and radial relationship;
+- bearing/shaft axial and radial coherence;
 - gear/belt/chain alignment;
 - cover/guard clearance;
-- tool/service clearance when movement is required for service;
+- tool/service clearance where movement is needed for service;
 - cable/hose bend radius, twist and extension;
 - connector strain and cable-entry clearance;
 - hard-stop engagement and overtravel margin;
-- payload envelope clearance;
-- counterweight clearance;
+- payload/counterweight envelope clearance;
 - gravity-sensitive interference or support loss;
-- any interface-specific invariant defined in the project.
+- every interface-specific invariant.
 
-If the CAD backend permits it, encode critical invariants as executable assertions rather than relying only on screenshots.
+Do not hide internal collisions by unioning all bodies of a moving subassembly into one collision mesh. Intentional contacts must be explicitly excluded/classified; all other physical solid overlap is forbidden.
 
-## 5. Swept-volume QA
+Encode critical invariants as executable assertions where practical.
 
-When geometry permits, also reason about the complete **swept volume** of each moving body.
+## 6. Constraint coherence at every state
 
-The swept volume is the union/envelope occupied by the body over the allowed motion range. No fixed component that is not intended to contact the moving part may intrude into that envelope, after applying the required safety clearance.
+Collision-free geometry is necessary but not sufficient. At every relevant state verify that the physical guide/support chain still leaves only the intended DOF(s):
 
-Swept-volume analysis is especially valuable for:
+- bearings remain seated and coaxial;
+- shafts remain radially/axially retained as designed;
+- sliders remain captured by their guide/slot/rail;
+- hinges/pivots remain supported on the intended axis;
+- fasteners/locators prevent unintended rotation/translation;
+- end stops/retainers actually bound the documented travel;
+- no service/configuration state removes a support that the motion model still assumes exists.
 
-- rotating arms;
-- payload plates;
-- covers near gears;
-- counterweights;
-- linkages;
-- robotic joints;
-- cable carriers;
-- folding structures.
+Underconstraint and overconstraint are both failures; see `MECHANICAL_INTEGRITY_PROTOCOL.md`.
 
-Sampling and swept-volume analysis complement each other: sampling gives inspectable configurations, while the swept envelope reduces the chance of missing a narrow intermediate conflict.
+## 7. Swept-volume QA
 
-## 6. Multiple degrees of freedom
+When geometry permits, supplement sampling with the swept volume occupied by each moving/adjusting solid over its allowed range. No non-contact body may intrude into the clearance-expanded swept volume.
 
-For mechanisms with two or more moving axes, testing every axis independently is insufficient.
+This is especially valuable for rotating arms, payload plates, knobs/handles, counterweights, covers near gears, linkages, robotic joints, cable carriers and folding structures.
 
-At minimum check:
+Sampling and swept-volume analysis complement each other.
 
-- all corners of the allowed configuration space;
-- each axis at both limits while the other axes are at representative/critical positions;
-- coupled trajectories used during normal operation;
+## 8. Multiple variables / coupled states
+
+Testing each axis independently is insufficient. At minimum check:
+
+- corners of allowed configuration space;
+- each axis/adjustment at both limits while other variables are at representative/critical states;
+- normal coupled trajectories;
 - known worst-case combinations;
-- singular/near-singular configurations where applicable.
+- singular/near-singular configurations;
+- periodic wrap transitions;
+- adjustment extremes combined with operational motion when geometry can interact.
 
-For two rotational axes this may conceptually mean checking combinations such as:
+If exhaustive Cartesian sampling is prohibitively expensive, document the proof strategy and what is not exhaustive.
 
-```text
-AZ min / ALT min
-AZ min / ALT max
-AZ max / ALT min
-AZ max / ALT max
-+ representative intermediate combinations
-+ actual operating trajectories
-```
+## 9. Visual evidence
 
-For periodic axes such as continuous 360° azimuth, sample the full revolution and include the wrap transition.
-
-If exhaustive Cartesian sampling would be prohibitively expensive, use adaptive sampling, critical configuration sets and swept-volume checks, and document what was not exhaustively tested.
-
-## 7. Visual evidence
-
-For human review, retain or regenerate evidence from:
+For human review retain/regenerate:
 
 - both end limits;
-- neutral/reference position;
-- representative intermediate positions;
-- closest-clearance positions;
-- any configuration that triggered refinement during automated sweep;
-- cutaway/transparent-cover views when internal motion is hidden;
-- section views through critical moving interfaces when useful.
+- reference state;
+- representative intermediate states;
+- closest-clearance states;
+- adjustment extremes;
+- any refined failure boundary;
+- cutaway/transparent views where motion is hidden;
+- section views through critical moving interfaces;
+- configuration combinations that are not visually obvious.
 
-A contact sheet or browser-selectable set of motion poses should make it possible to review the mechanism without opening the desktop CAD tool.
+A contact sheet or browser-selectable set of poses/states should allow review without desktop CAD.
 
-## 8. Pass criteria
+## 10. Pass criteria
 
-A moving mechanism may be marked `MOTION_QA_PASS` only when:
+A mechanism may be marked `MOTION_QA_PASS` only when:
 
-1. its motion contract is defined;
-2. both end limits were checked;
-3. the full allowed range was swept with a justified sampling strategy;
-4. critical multi-axis combinations were checked where relevant;
-5. no unintended collision was found;
-6. required clearances remain satisfied throughout the motion envelope;
-7. cables/flexible elements remain valid throughout the range, if present;
-8. hard stops and overtravel behavior are understood where relevant;
-9. moving interfaces remain mechanically coherent throughout the range;
-10. the evidence and procedure are repeatable from repository-controlled source/tools.
+1. operational and adjustment/configuration contracts are defined;
+2. the physical constraint chain for each intended DOF is defined;
+3. all endpoints are checked;
+4. complete affected ranges are swept with justified resolution;
+5. critical coupled combinations are checked;
+6. no forbidden solid intersection exists at the chosen proof level;
+7. required clearances remain satisfied;
+8. internal same-transform solid pairs have not been omitted;
+9. flexible elements remain valid where present;
+10. hard stops/retention/overtravel are understood;
+11. supports/guides remain mechanically coherent throughout the states;
+12. limitations of the proof are explicit;
+13. evidence/procedure are reproducible from repository-controlled source/tools.
 
-## 9. Failure and backtracking
+## 11. Failure and backtracking
 
-If any sampled or critical position fails:
+If any state fails:
 
-1. record the failing motion ID and configuration;
-2. identify the interface/parameter that owns the conflict;
-3. backtrack to the nearest upstream design decision that can resolve it;
-4. mark affected parts/interfaces `NEEDS_REVALIDATION`;
-5. revise geometry/parameters;
+1. record the failing motion/state ID and configuration;
+2. identify the interface/constraint/parameter that owns the conflict;
+3. backtrack to the nearest upstream decision that can resolve it;
+4. mark affected parts/interfaces/constraint contracts `NEEDS_REVALIDATION`;
+5. revise geometry/parameters/support strategy;
 6. repeat per-part QA for changed parts;
-7. repeat the complete motion sweep, not only the previously failing pose;
-8. repeat downstream assembly QA affected by the change.
+7. repeat the **complete affected state-space sweep**, not only the failing pose;
+8. repeat downstream assembly/constraint QA.
 
-A local fix is not accepted if it creates a new conflict elsewhere in the allowed motion range.
+A local fix is not accepted if it creates a conflict elsewhere.
 
-## 10. Invalidation rule
+## 12. Invalidation rule
 
-Any geometry or parameter change that can alter a moving body's shape, axis, limit, neighboring clearance, payload envelope, cable path or support relationship invalidates the relevant motion QA.
-
-The motion sweep must be re-run after such a change before the assembly returns to trusted status.
+Any change that can alter a solid envelope, axis/path, support/constraint chain, motion/adjustment limit, neighboring clearance, payload envelope, cable path, fastener envelope, retention/end-stop, or assembly/service state invalidates the relevant motion checkpoint.
 
 ## Compact rule
 
 ```text
-DEFINE MOTION CONTRACT
+DEFINE REAL PHYSICAL DOFs + CONSTRAINT CHAINS
         ↓
-CHECK BOTH END LIMITS
+DEFINE ALL OPERATIONAL / ADJUSTMENT / CONFIGURATION STATES
         ↓
-SWEEP COMPLETE RANGE
+CLASSIFY SOLID-BODY RELATIONSHIPS
         ↓
-REFINE NEAR CRITICAL CLEARANCES
+CHECK END LIMITS
         ↓
-CHECK SWEPT VOLUME / COLLISIONS
+SWEEP COMPLETE RANGES
         ↓
-CHECK COUPLED MULTI-AXIS STATES
+PAIRWISE COLLISION + CLEARANCE CHECKS
         ↓
-HUMAN REVIEW OF CRITICAL POSES
+REFINE CRITICAL REGIONS / SWEPT VOLUMES
+        ↓
+CHECK COUPLED STATE SPACE
+        ↓
+VERIFY SUPPORT / RETENTION COHERENCE
+        ↓
+HUMAN REVIEW OF CRITICAL STATES
         ↓
 PASS
 ```
 
-The intent is to prove that a mechanism remains geometrically and mechanically coherent **throughout its usable motion**, not merely at the pose in which it was designed.
+The intent is to prove that the physical mechanism remains geometrically and mechanically coherent throughout every allowed usable and adjustment state, not merely that the CAD can be animated along a desired path.
