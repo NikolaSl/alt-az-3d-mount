@@ -6,8 +6,8 @@ module payload_plate() {
         rounded_plate(size = [PAYLOAD_PLATE[0], PAYLOAD_PLATE[1]],
                       r = 5.0, h = PAYLOAD_PLATE[2]);
 
-        // Sliding 1/4-20 camera screw: move the payload CG over the altitude axis.
-        translate([0, 8, -EPS])
+        // Sliding 1/4-20 payload screw: move the payload CG over the altitude axis.
+        translate([0, PAYLOAD_SLOT_CENTER_Y, -EPS])
             rotate([0, 0, 90])
                 slot_3d(length = PAYLOAD_SLOT_L,
                         d = PAYLOAD_SLOT_D,
