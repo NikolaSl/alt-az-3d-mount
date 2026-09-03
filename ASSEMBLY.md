@@ -211,10 +211,12 @@ For tripod mode, remove the tabletop adapter and use the same captive 1/4-20 nut
 4. Install idler-side shaft collar but leave small controlled axial endplay.
 5. Insert the 1/4-20 metal bolt into `camera_screw_knob`, then through the payload balance slot.
 6. Verify that the knob top clamps the plate underside while the knob/bolt body remains above the ALT shaft.
-7. With the payload attachment loosened, slide from `PAYLOAD_SLIDER_MIN_Y` to `PAYLOAD_SLIDER_MAX_Y`; there must be no contact with shaft or split clamps.
-8. Tighten the payload attachment and verify the adjustment DOF is removed without plate/knob distortion or payload slip.
+7. With the payload attachment loosened, move the **screw center** manually from `PAYLOAD_SLIDER_MIN_Y` to `PAYLOAD_SLIDER_MAX_Y`; hold/align the payload by hand because one slotted screw does not prevent payload yaw while loose. There must be no contact with shaft or split clamps.
+8. Tighten the payload attachment and verify that screw-center translation and payload yaw/slip are eliminated by the final clamp preload.
 
 The raised plate is deliberate: nominal knob-to-shaft vertical clearance is controlled by `PAYLOAD_KNOB_SHAFT_CLEARANCE`, not accidental geometry.
+
+The balancing slot is intentionally a **manual setup interface**, not a self-guided carriage. If future requirements need repeatable/self-guided linear adjustment, add an anti-rotation guide/second locator and revalidate the constraint/state-space architecture.
 
 ### G. ALT gearbox plate/motor
 
@@ -257,9 +259,9 @@ Spacer OD must load only the 608 inner race. Do not preload the bearing outer ra
 
 1. Power off/release drive as appropriate before balancing.
 2. Loosen the 1/4-20 payload attachment only enough to permit slot movement.
-3. Move through the complete allowed slot range to place payload CG close to ALT axis.
+3. Hold the payload orientation manually and move the screw center through the complete allowed slot range to place payload CG close to the ALT axis.
 4. Target residual CG offset approximately ≤10–15 mm for heavy payload when practical.
-5. Re-tighten and confirm no residual slider motion/slip.
+5. Re-tighten and confirm no residual screw-center movement, payload yaw or slip.
 6. If slot travel is insufficient, reposition the payload adapter using the M4 pattern or add an intentional counterweight; do not extend the documented slider range without re-QA.
 
 ## 7. Mechanical-integrity / DOF checks before power
@@ -268,9 +270,9 @@ Follow `MECHANICAL_INTEGRITY_PROTOCOL.md`, `INTERFACES.md` constraint IDs and `M
 
 - [ ] `K-001` AZ: M8 datum + turntable/glides + axial retention leave only intended AZ rotation; motor/gears do not carry vertical payload load.
 - [ ] `K-002` ALT: two separated 608ZZ constrain the Ø8 shaft radially/coaxially; collar/output stack controls axial travel without binding.
-- [ ] `K-003` payload adjustment: while loosened, slot/screw permits only intended balance translation to the documented limits; tightened state removes that DOF.
+- [ ] `K-003` payload balance setup: the slot constrains the screw-center path, **not the complete loose payload orientation**; operator-controlled yaw during setup is explicit, and the tightened state must remove translation/yaw/slip.
 - [ ] All fastener heads/nuts/washers and real bolt/shaft envelopes are clear of forbidden solid volumes.
-- [ ] Payload fastener moves through its full balance range without shaft/clamp contact.
+- [ ] Payload fastener moves through its full screw-center balance range without shaft/clamp contact.
 - [ ] AZ makes a full physical 360° rotation with no binding/wobble.
 - [ ] ALT moves physically through -20°..+90° with no collision/binding.
 - [ ] ALT output spacer touches only drive-side 608 inner race.
@@ -278,7 +280,7 @@ Follow `MECHANICAL_INTEGRITY_PROTOCOL.md`, `INTERFACES.md` constraint IDs and `M
 - [ ] Motor bodies do not contact structural arms.
 - [ ] Real cables/connectors stay outside gear/swept volumes and have adequate service loops.
 - [ ] Tabletop base does not rock and is physically stable with worst actual payload CG/ALT state.
-- [ ] Payload remains secure when adjustment screw is tightened.
+- [ ] Payload remains secure when the adjustment screw is tightened.
 
 Powered load progression:
 
@@ -296,7 +298,7 @@ A mechanical change is accepted only when all applicable items pass:
 2. ISO + six orthographic views and useful critical sections;
 3. realistic neighbor/hardware context;
 4. solid-body relationship classification and forbidden-overlap checks;
-5. support/constraint/load-path review;
+5. support/constraint/load-path review, with manual/external constraints identified rather than assumed away;
 6. assembly/tool/service feasibility;
 7. complete affected operational + adjustment state-space QA, including endpoints and coupled states;
 8. `PARTS.md`, `INTERFACES.md`, this BOM/sequence and `PROJECT_STATE.md` synchronized.
@@ -318,7 +320,7 @@ Freeze a mechanically sound supported AZ compound axle only after physical fit.
 Verify motor pinion, shoulder axle, Ø8 output bore/spacer and grub-screw clamp physically.
 
 ### `VERIFY-PAYLOAD-ADJUSTMENT`
-Verify complete slot travel, real 1/4-20 bolt/knob clearance, clamp preload and no payload slip with the intended payload.
+Verify complete screw-center slot travel, real 1/4-20 bolt/knob clearance, final clamp preload and no payload yaw/slip after tightening. The loose state is manual/operator-constrained unless a future anti-rotation guide is added.
 
 ### `VERIFY-TABLETOP-STABILITY`
 Verify real payload CG, all-foot contact and overturn margin; CAD footprint alone is not proof.
