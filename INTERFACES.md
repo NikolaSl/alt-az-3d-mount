@@ -14,7 +14,8 @@ Stable IDs are used for interfaces (`I-*`), constraints (`K-*`) and motion/adjus
 6. Printer fits, motor clone dimensions, bearings, shafts and purchased fasteners remain `PHYSICAL_PENDING` until measured/tested.
 7. If no explicit relationship permits contact/fit/passage/embedding, physical solids default to **forbidden overlap**.
 8. Bodies sharing the same operational transform still require internal interference checks.
-9. A CAD `rotate()`/`translate()` is not a mechanism: each intended DOF requires a physical constraint chain that removes the unwanted DOFs.
+9. A CAD `rotate()`/`translate()` is not a mechanism: each intended autonomous/repeatable DOF requires a physical constraint chain that removes the unwanted DOFs.
+10. Manual/operator-constrained setup states must say so explicitly; they are not counted as self-guided mechanism DOFs.
 
 ## Interface register
 
@@ -37,7 +38,7 @@ Stable IDs are used for interfaces (`I-*`), constraints (`K-*`) and motion/adjus
 | `I-015` | both 608ZZ | `H-ALT-SHAFT` | Smooth Ø8 shaft passes both inner races; free rotation with controlled axial play | `AXIS_SHAFT_D`, `ALT_SHAFT_L` | `CAD_VALIDATED` | `PHYSICAL_PENDING` |
 | `I-016` | `H-ALT-SHAFT` | payload clamp pairs | Split clamps grip shaft and transmit payload torque without destructive press-fit | `AXIS_SHAFT_D`, `SHAFT_CLAMP_*`, `PAYLOAD_CLAMP_*` | `CAD_REVISED` | `PHYSICAL_PENDING` |
 | `I-017` | payload clamps | `P-PAYLOAD-PLATE` | Two clamp stations mount plate symmetrically; upper clamp halves also provide the structural riser required for payload-fastener/shaft clearance | `PAYLOAD_CLAMP_*`, `PAYLOAD_PLATE_*` | `CAD_REVISED` | `PHYSICAL_PENDING` |
-| `I-018` | `P-PAYLOAD-PLATE` | `H-PAYLOAD-SCREW` / payload | Sliding 1/4-20 attachment provides balancing travel while retaining adequate plate material | `PAYLOAD_SLOT_*`, `TRIPOD_*` | `CAD_REVISED` | `PHYSICAL_PENDING` |
+| `I-018` | `P-PAYLOAD-PLATE` | `H-PAYLOAD-SCREW` / payload | Sliding 1/4-20 attachment provides balancing travel while retaining adequate plate material; the slot constrains the screw-center path but does not by itself prevent a loose single-screw payload from yawing | `PAYLOAD_SLOT_*`, `TRIPOD_*` | `CAD_REVISED` | `PHYSICAL_PENDING` |
 | `I-019` | `P-YOKE-DRIVE` | `P-ALT-PLATE` | ALT gearbox plate fixes outside drive arm; central opening clears bearing; countersunk heads clear gear envelope | `YOKE_GEARBOX_*`, `ALT_PLATE_*` | `CAD_VALIDATED` | `PHYSICAL_PENDING` |
 | `I-020` | `H-ALT-MOTOR` | `P-ALT-PLATE` | 28BYJ motor mounts behind plate with shaft through plate on reducer datum | `BYJ_*`, `ALT_MOTOR*` | `CAD_VALIDATED` | `PHYSICAL_PENDING` |
 | `I-021` | `H-ALT-MOTOR` | `P-ALT-PINION` | 12T pinion fits actual ALT motor Double-D shaft | `BYJ_SHAFT_*`, `ALT_MOTOR_PINION_*` | `CAD_VALIDATED` | `PHYSICAL_PENDING` |
@@ -48,7 +49,7 @@ Stable IDs are used for interfaces (`I-*`), constraints (`K-*`) and motion/adjus
 | `I-026` | `P-ALT-GUARD` | `P-ALT-PLATE` | Removable 4×M3 guard clears gears, supports compound axle and preserves service access | `ALT_GUARD_*` | `CAD_VALIDATED` | `PHYSICAL_PENDING` |
 | `I-027` | `P-SHAFT-COLLAR` | `H-ALT-SHAFT` | Idler-side collar limits axial travel with small endplay; M3 grub screw locks collar | shaft/collar geometry | `CAD_VALIDATED` | `PHYSICAL_PENDING` |
 | `I-028` | `P-TABLETOP-BASE` / bolt / feet | `P-AZ-BASE` / support surface | Removable locator + 1/4-20 clamp; bolt avoids M8 hardware; feet establish wide support footprint | `TABLETOP_*`, `TRIPOD_*` | `CAD_VALIDATED` | `VERIFY-TABLETOP-STABILITY` |
-| `I-029` | `P-CAMERA-KNOB` + `H-PAYLOAD-SCREW` | `H-ALT-SHAFT` + payload clamps | Adjustable fastener must remain outside shaft/clamp forbidden volumes through the complete balance travel; ≥3 mm to shaft and ≥2 mm to clamp bodies; bolt-through-slot and knob-to-plate contact are explicit intentional relations | `CAMERA_KNOB_*`, `PAYLOAD_*`, `AXIS_SHAFT_D` | `QA_IN_PROGRESS` | `PHYSICAL_PENDING` |
+| `I-029` | `P-CAMERA-KNOB` + `H-PAYLOAD-SCREW` | `H-ALT-SHAFT` + payload clamps | Adjustable fastener must remain outside shaft/clamp forbidden volumes through the complete screw-center balance travel; ≥3 mm to shaft and ≥2 mm to clamp bodies; bolt-through-slot and knob-to-plate contact are explicit intentional relations | `CAMERA_KNOB_*`, `PAYLOAD_*`, `AXIS_SHAFT_D` | `QA_IN_PROGRESS` | `PHYSICAL_PENDING` |
 
 ## Critical interface details
 
@@ -86,13 +87,15 @@ Intentional relations:
 
 All other knob/bolt ↔ shaft/clamp overlap is forbidden.
 
+The QA variable `PAYLOAD_SCREW_Y` describes the physically slot-constrained **screw-center coordinate**. It does not assert that the entire loose payload has a unique orientation. During balancing, the operator must hold/align the payload while moving the screw center; yaw about the single screw remains possible until tightened. If a future requirement calls for repeatable/self-guided balance translation, the design needs an anti-rotation guide, second pin/slot, keyed carriage, rail or equivalent real constraint.
+
 ## Constraint / DOF register
 
 | Constraint ID | Body/subassembly | Intended DOF | Physical constraint chain | Retention / limits | Load/reaction path | Status |
 |---|---|---|---|---|---|---|
 | `K-001` | AZ rotating upper stage | 1 rotation about Z | M8 central axis establishes radial datum; turntable/PTFE glide system supports vertical load; hub drives stage | upper M8 retaining hardware controls axial play; nominal continuous 360° | payload → yoke → turntable → glide/base → support; reducer supplies torque only | `CAD_DEFINED / PHYSICAL_PENDING` |
 | `K-002` | ALT shaft + payload | 1 rotation about X | Ø8 shaft through two separated coaxial 608ZZ bearings | output-side stack + idler collar control axial travel/endplay | payload → shaft clamps → shaft → 608 inner races → yoke arms → AZ stage | `CAD_DEFINED / PHYSICAL_PENDING` |
-| `K-003` | payload balance adjustment | 1 temporary translation along slot Y while loosened; 0 DOF when tightened | 1/4-20 screw shank through longitudinal plate slot constrains lateral path; plate/knob capture Z | slot end-circle centers bound usable travel; tightening screw clamps payload and removes translation | payload → screw/clamp preload → plate → shaft clamps → ALT shaft | `CAD_REVISED / QA_IN_PROGRESS / PHYSICAL_PENDING` |
+| `K-003` | payload balance setup | screw-center coordinate has 1 constrained translation along slot Y while loose; full payload retains yaw about the single screw and is operator-constrained during setup; target 0 DOF when tightened | 1/4-20 shank + longitudinal slot constrain screw-center lateral path; plate/knob capture the fastener; operator/adapter controls payload orientation while loose | slot end-circle centers bound screw-center travel; tightening clamp preload must lock payload translation/yaw without slip | tightened payload → screw/clamp preload → plate → shaft clamps → ALT shaft | `CAD_REVISED / QA_IN_PROGRESS / PHYSICAL_PENDING` |
 | `K-004` | AZ compound gear | 1 rotation about intermediate axle | smooth/shoulder axle with adequate support, intended two-sided/final support | axial retention TBD by physical decision | gear mesh forces → axle supports → AZ base/cover | `HOLD-AZ-AXLE` |
 | `K-005` | ALT compound gear | 1 rotation about intermediate axle | shoulder axle supported by gearbox plate and guard roof | shoulder/nut establish axial retention with free rotation | mesh force → axle → plate/guard → yoke arm | `CAD_DEFINED / PHYSICAL_PENDING` |
 
@@ -102,7 +105,7 @@ All other knob/bolt ↔ shaft/clamp overlap is forbidden.
 |---|---|---|---|---|---|---|
 | `M-AZ` | operational | everything above turntable | AZ base/tabletop envelope | 0°..360° continuous including wrap | `K-001` | `NEEDS_REVALIDATION` after payload envelope change |
 | `M-ALT` | operational | shaft + payload + shaft-coupled output | yoke / fixed ALT gearbox / lower structure | -20°..+90° | `K-002` | `NEEDS_REVALIDATION` after raised payload geometry |
-| `M-PAYLOAD-SLIDE` | adjustment | payload fastener/payload attachment position | ALT shaft, clamps, plate, upper/lower structure | `PAYLOAD_SLIDER_MIN_Y .. PAYLOAD_SLIDER_MAX_Y` | `K-003` | `QA_IN_PROGRESS` |
+| `M-PAYLOAD-SLIDE` | manual adjustment state | payload fastener screw-center position (not a claim of fully guided payload pose) | ALT shaft, clamps, plate, upper/lower structure | `PAYLOAD_SLIDER_MIN_Y .. PAYLOAD_SLIDER_MAX_Y` | `K-003` | `QA_IN_PROGRESS` |
 
 The current QA plan is `docs/motion-sweep-plan.md`. Accepted old evidence in `docs/motion-qa-results.md` is superseded for the changed payload envelope until the new full-state run passes.
 
