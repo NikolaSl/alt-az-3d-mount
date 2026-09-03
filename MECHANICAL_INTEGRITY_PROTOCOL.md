@@ -1,6 +1,6 @@
 # Mechanical Integrity Protocol — solids, supports, constraints and real DOFs
 
-This protocol is project-agnostic. It complements `DESIGN_PROTOCOL.md`, `VISUAL_QA_PROTOCOL.md` / `docs/visual-qa.md`, and `MOTION_QA_PROTOCOL.md`.
+This protocol is project-agnostic. It complements `DESIGN_PROTOCOL.md`, `docs/visual-qa.md`, and `MOTION_QA_PROTOCOL.md`.
 
 Its purpose is to prevent two classes of CAD errors that ordinary assembly rendering can miss:
 
@@ -94,6 +94,20 @@ anti-rotation: geometry/fastener pattern resists torque
 
 Do not accept a model that merely applies `translate()` or `rotate()` along a desired path without a realizable bearing, hinge, guide, rail, slot, linkage, flexure or other physical constraint that enforces that path.
 
+### Manual setup and external constraints must be explicit
+
+A human hand, temporary jig, gravity/friction during setup, or an external fixture may constrain a body during assembly or adjustment, but those are **external constraints**, not mechanism constraints.
+
+If a state relies on an operator or fixture:
+
+- record that dependency explicitly;
+- do not claim that the mechanism itself has only the modeled DOF;
+- use state parameters to test collision/clearance only for coordinates actually constrained by geometry;
+- account for remaining uncontrolled rotations/translations with conservative envelopes or explicit setup instructions;
+- verify the final retained/clamped state separately.
+
+For this mount, a single 1/4-20 screw in the payload slot constrains the **screw center** to the slot path, but the attached payload can still yaw about that screw while loose. Therefore balancing is a manual setup state, not a self-guided one-DOF carriage. If repeatable/autonomous one-dimensional payload translation is ever required, add a second guide, keyed carriage, rail, anti-rotation feature or equivalent real constraint and re-run the constraint/state-space QA.
+
 ## 5. Constraint / DOF register
 
 For every major body or kinematic subassembly record a stable constraint ID and at least:
@@ -109,6 +123,7 @@ For every major body or kinematic subassembly record a stable constraint ID and 
 - load/reaction path into the structure;
 - relevant fasteners;
 - assembly state in which the constraint becomes active;
+- external/operator constraints, if any;
 - physical verification still required.
 
 A useful table is:
@@ -128,7 +143,10 @@ A body must not have unintended free translation/rotation that the design assume
 - shaft can slide axially because no collar/shoulder exists;
 - a motor/gearbox can rotate around a single fastener;
 - a slider has nothing preventing lift-off or yaw;
-- a payload is held only by friction where a positive locating feature is required.
+- a single slotted screw is treated as a self-guided carriage even though the payload can rotate around it;
+- a payload is held only by friction where a positive locating feature is required by the functional requirement.
+
+A deliberately manual setup may retain extra DOFs while loose, but those DOFs and the operator/fixture role must be explicit. They cannot be silently counted as mechanically constrained.
 
 ### Overconstraint
 
@@ -197,8 +215,9 @@ For every relevant configuration state:
 5. verify intended-contact/fit pairs remain in their allowed relationship;
 6. verify the constraint chain remains assembled/coherent;
 7. verify end-stop/retention conditions at limits;
-8. refine sampling around minimum-clearance or transition states;
-9. retain machine-readable evidence plus critical human-review poses.
+8. account for explicit external/operator constraints and any residual free DOFs in setup states;
+9. refine sampling around minimum-clearance or transition states;
+10. retain machine-readable evidence plus critical human-review poses.
 
 Where possible, use pairwise collision meshes rather than one monolithic union so internal collisions cannot disappear inside a combined mesh.
 
@@ -207,15 +226,16 @@ Where possible, use pairwise collision meshes rather than one monolithic union s
 An assembly may be considered mechanically coherent only when:
 
 1. every installed body has a defined support/constraint state;
-2. intended DOFs are physically realizable and all unintended rigid-body DOFs are constrained;
-3. all travel limits/retention mechanisms are defined;
-4. relevant solid-body relationships are classified;
-5. no forbidden solid intersection exists anywhere in the allowed operational/adjustment/configuration state space at the chosen proof resolution;
-6. all specified minimum clearances are met;
-7. load/reaction paths are understood;
-8. fasteners/supports can be assembled, tightened, accessed and serviced;
-9. tolerance-sensitive support/fit assumptions are explicitly pending physical verification where CAD cannot prove them;
-10. the proof can be reproduced from repository-controlled source and QA tools.
+2. intended autonomous/repeatable DOFs are physically realizable and all unintended rigid-body DOFs are constrained;
+3. manual/setup states explicitly identify any operator/fixture constraints and residual DOFs;
+4. all travel limits/retention mechanisms are defined;
+5. relevant solid-body relationships are classified;
+6. no forbidden solid intersection exists anywhere in the allowed operational/adjustment/configuration state space at the chosen proof resolution;
+7. all specified minimum clearances are met;
+8. load/reaction paths are understood;
+9. fasteners/supports can be assembled, tightened, accessed and serviced;
+10. tolerance-sensitive support/fit assumptions are explicitly pending physical verification where CAD cannot prove them;
+11. the proof can be reproduced from repository-controlled source and QA tools.
 
 ## 11. Invalidation
 
@@ -228,6 +248,7 @@ Changing any of the following invalidates the affected mechanical-integrity chec
 - fastener pattern or hardware envelope;
 - travel/adjustment range;
 - retention or end-stop geometry;
+- external/operator constraint assumptions;
 - load path;
 - assembly/service sequence;
 - a parameter that changes any of the above.
@@ -241,7 +262,9 @@ NO UNCLASSIFIED SOLID INTERSECTION
 +
 EVERY BODY HAS A REAL SUPPORT / LOAD PATH
 +
-INTENDED MOTION = ONLY DOF LEFT BY PHYSICAL CONSTRAINTS
+AUTONOMOUS MOTION = ONLY DOF LEFT BY PHYSICAL CONSTRAINTS
++
+MANUAL / EXTERNAL CONSTRAINTS ARE EXPLICIT, NEVER ASSUMED AWAY
 +
 FULL OPERATIONAL + ADJUSTMENT + CONFIGURATION STATE SPACE IS CHECKED
 ```
