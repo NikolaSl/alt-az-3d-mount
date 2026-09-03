@@ -6,6 +6,7 @@ use <alt_drive_stage.scad>
 
 AZ_ANGLE = is_undef(AZ_ANGLE) ? 0 : AZ_ANGLE;
 ALT_ANGLE = is_undef(ALT_ANGLE) ? 0 : ALT_ANGLE;
+PAYLOAD_SCREW_Y = is_undef(PAYLOAD_SCREW_Y) ? PAYLOAD_SLOT_CENTER_Y : PAYLOAD_SCREW_Y;
 
 module alt_drive_to_world(axis_z) {
     // ALT-drive local X -> world Y, local Y -> world Z,
@@ -20,6 +21,7 @@ module alt_drive_to_world(axis_z) {
 
 module full_mount(altitude_angle = ALT_ANGLE,
                   azimuth_angle = AZ_ANGLE,
+                  payload_screw_y = PAYLOAD_SCREW_Y,
                   show_alt_guard = true) {
     // The lower AZ stage remains fixed. The structural upper assembly rotates
     // around the common Z axis. The turntable's outer envelope is rotationally
@@ -38,7 +40,8 @@ module full_mount(altitude_angle = ALT_ANGLE,
 
         // Payload/clamps rotate around the X-axis together with the steel ALT shaft.
         translate([0, 0, altitude_axis_z])
-            rotate([altitude_angle, 0, 0]) payload_stage();
+            rotate([altitude_angle, 0, 0])
+                payload_stage(payload_screw_y = payload_screw_y);
 
         // The gearbox is fixed to the outside face of yoke_arm_drive and follows AZ.
         alt_drive_to_world(altitude_axis_z)
