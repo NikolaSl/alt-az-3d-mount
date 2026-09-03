@@ -14,12 +14,13 @@ A continuous configuration space contains infinitely many states, so practical Q
 
 ## 1. Define motion and adjustment contracts before testing
 
-For every operational or adjustment degree of freedom record:
+For every operational or adjustment state variable record:
 
 - stable motion/state ID;
-- moving body/assembly;
+- moving body/assembly or precisely the coordinate being varied;
 - fixed/reference bodies;
-- **physical constraint chain that actually enforces the trajectory**;
+- **physical constraint chain that actually enforces the claimed trajectory/DOF**;
+- any manual/operator/fixture constraint used during setup;
 - axis/path datum;
 - minimum and maximum allowed position or discrete state set;
 - periodic/wrap behavior, if any;
@@ -33,6 +34,8 @@ For every operational or adjustment degree of freedom record:
 
 A CAD `translate()` or `rotate()` is not a physical motion constraint. The corresponding bearing, shaft, hinge, guide, rail, slot, linkage, flexure or other constraint must be identified as required by `MECHANICAL_INTEGRITY_PROTOCOL.md`.
 
+If only one coordinate is physically constrained while other body DOFs remain free during manual setup, the QA variable must be named as that coordinate rather than falsely claiming a self-guided mechanism. Example: a screw center can be constrained by a slot while the attached payload still yaws around the screw. The operator may control that yaw during balancing, but it remains an explicit external constraint until the final clamped state removes it.
+
 Motion limits and axis datums belong to shared parameters/interface contracts, not duplicated QA constants.
 
 ## 2. Complete configuration space
@@ -41,14 +44,14 @@ The QA state space is the combination of all mechanically relevant state variabl
 
 ```text
 operational DOFs
-× adjustment DOFs
+× adjustment coordinates / DOFs
 × discrete configurations
 × relevant service/assembly states
 ```
 
 Examples of adjustment/configuration variables that must not be ignored:
 
-- payload screw moving through a balancing slot;
+- payload screw center moving through a balancing slot;
 - telescopic length;
 - counterweight position;
 - movable clamp position;
@@ -58,6 +61,8 @@ Examples of adjustment/configuration variables that must not be ignored:
 - alternate adapter/payload geometry.
 
 If exhaustive Cartesian sampling is too costly, use documented critical combinations, conservative envelopes, adaptive refinement and swept-volume proofs. Never silently assume an adjustment remains safe because it shares the same operational transform as another body.
+
+For manual setup states with residual uncontrolled DOFs, either model the relevant residual envelope conservatively or state exactly which orientation/position is operator-controlled and what the QA does and does not prove.
 
 ## 3. Mandatory states
 
@@ -128,11 +133,13 @@ Collision-free geometry is necessary but not sufficient. At every relevant state
 - shafts remain radially/axially retained as designed;
 - sliders remain captured by their guide/slot/rail;
 - hinges/pivots remain supported on the intended axis;
-- fasteners/locators prevent unintended rotation/translation;
+- fasteners/locators prevent unintended rotation/translation where the design claims they do;
 - end stops/retainers actually bound the documented travel;
 - no service/configuration state removes a support that the motion model still assumes exists.
 
-Underconstraint and overconstraint are both failures; see `MECHANICAL_INTEGRITY_PROTOCOL.md`.
+If a manual setup explicitly leaves residual DOFs, verify only the constraints actually provided by the mechanism and record the operator/fixture role. Do not promote that setup state to `MOTION_QA_PASS` as an autonomous/repeatable DOF unless the mechanism physically constrains it.
+
+Underconstraint and overconstraint are both failures when they violate the intended functional contract; see `MECHANICAL_INTEGRITY_PROTOCOL.md`.
 
 ## 7. Swept-volume QA
 
@@ -177,18 +184,19 @@ A contact sheet or browser-selectable set of poses/states should allow review wi
 A mechanism may be marked `MOTION_QA_PASS` only when:
 
 1. operational and adjustment/configuration contracts are defined;
-2. the physical constraint chain for each intended DOF is defined;
-3. all endpoints are checked;
-4. complete affected ranges are swept with justified resolution;
-5. critical coupled combinations are checked;
-6. no forbidden solid intersection exists at the chosen proof level;
-7. required clearances remain satisfied;
-8. internal same-transform solid pairs have not been omitted;
-9. flexible elements remain valid where present;
-10. hard stops/retention/overtravel are understood;
-11. supports/guides remain mechanically coherent throughout the states;
-12. limitations of the proof are explicit;
-13. evidence/procedure are reproducible from repository-controlled source/tools.
+2. the physical constraint chain for each claimed autonomous/repeatable DOF is defined;
+3. manual setup variables explicitly identify residual DOFs and external/operator constraints;
+4. all endpoints are checked;
+5. complete affected ranges are swept with justified resolution;
+6. critical coupled combinations are checked;
+7. no forbidden solid intersection exists at the chosen proof level;
+8. required clearances remain satisfied;
+9. internal same-transform solid pairs have not been omitted;
+10. flexible elements remain valid where present;
+11. hard stops/retention/overtravel are understood;
+12. supports/guides remain mechanically coherent throughout the states;
+13. limitations of the proof are explicit;
+14. evidence/procedure are reproducible from repository-controlled source/tools.
 
 ## 11. Failure and backtracking
 
@@ -207,12 +215,12 @@ A local fix is not accepted if it creates a conflict elsewhere.
 
 ## 12. Invalidation rule
 
-Any change that can alter a solid envelope, axis/path, support/constraint chain, motion/adjustment limit, neighboring clearance, payload envelope, cable path, fastener envelope, retention/end-stop, or assembly/service state invalidates the relevant motion checkpoint.
+Any change that can alter a solid envelope, axis/path, support/constraint chain, motion/adjustment limit, neighboring clearance, payload envelope, cable path, fastener envelope, retention/end-stop, manual/external constraint assumption, or assembly/service state invalidates the relevant motion checkpoint.
 
 ## Compact rule
 
 ```text
-DEFINE REAL PHYSICAL DOFs + CONSTRAINT CHAINS
+DEFINE REAL PHYSICAL DOFs / CONSTRAINED SETUP COORDINATES
         ↓
 DEFINE ALL OPERATIONAL / ADJUSTMENT / CONFIGURATION STATES
         ↓
@@ -228,11 +236,11 @@ REFINE CRITICAL REGIONS / SWEPT VOLUMES
         ↓
 CHECK COUPLED STATE SPACE
         ↓
-VERIFY SUPPORT / RETENTION COHERENCE
+VERIFY SUPPORT / RETENTION / EXTERNAL-CONSTRAINT COHERENCE
         ↓
 HUMAN REVIEW OF CRITICAL STATES
         ↓
 PASS
 ```
 
-The intent is to prove that the physical mechanism remains geometrically and mechanically coherent throughout every allowed usable and adjustment state, not merely that the CAD can be animated along a desired path.
+The intent is to prove that the physical mechanism remains geometrically and mechanically coherent throughout every allowed usable and adjustment state, without pretending that a CAD trajectory or manually held setup state is self-constrained when it is not.
