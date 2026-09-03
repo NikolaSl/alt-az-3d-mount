@@ -13,6 +13,7 @@ use <../parts/camera_screw_knob.scad>
 
 AZ_ANGLE = is_undef(AZ_ANGLE) ? 0 : AZ_ANGLE;
 ALT_ANGLE = is_undef(ALT_ANGLE) ? 0 : ALT_ANGLE;
+PAYLOAD_SCREW_Y = is_undef(PAYLOAD_SCREW_Y) ? PAYLOAD_SLOT_CENTER_Y : PAYLOAD_SCREW_Y;
 CHECK_MODE = is_undef(CHECK_MODE) ? 0 : CHECK_MODE;
 WITH_TABLETOP = is_undef(WITH_TABLETOP) ? false : WITH_TABLETOP;
 CLEARANCE_MARGIN = is_undef(CLEARANCE_MARGIN) ? 0 : CLEARANCE_MARGIN;
@@ -30,20 +31,24 @@ module alt_drive_to_world_qa(axis_z) {
     ]) children();
 }
 
-module payload_collision_body_local() {
-    // Steel ALT shaft omitted: shaft/bearing engagement is intentional contact.
+module payload_collision_body_local(payload_screw_y = PAYLOAD_SCREW_Y) {
+    // Steel ALT shaft is omitted from this *external* obstruction body because
+    // shaft/clamp/bearing engagement is intentional contact. Internal solid-pair
+    // exclusion is checked separately by payload_adjustment_collision_check.scad.
     for (x = [-PAYLOAD_CLAMP_X, PAYLOAD_CLAMP_X]) {
-        translate([x, 0, -PAYLOAD_CLAMP_HALF_H]) payload_clamp_lower();
+        translate([x, 0, -PAYLOAD_CLAMP_LOWER_H]) payload_clamp_lower();
         translate([x, 0, 0]) payload_clamp_upper();
     }
-    translate([0, 0, PAYLOAD_CLAMP_HALF_H]) payload_plate();
-    translate([0, 8, 0]) camera_screw_knob();
+    translate([0, 0, PAYLOAD_PLATE_Z]) payload_plate();
+    translate([0, payload_screw_y, PAYLOAD_KNOB_Z]) camera_screw_knob();
 }
 
-module moving_payload_world(az = AZ_ANGLE, alt = ALT_ANGLE) {
+module moving_payload_world(az = AZ_ANGLE, alt = ALT_ANGLE,
+                            payload_screw_y = PAYLOAD_SCREW_Y) {
     rotate([0, 0, az])
         translate([0, 0, ALT_AXIS_Z_QA])
-            rotate([alt, 0, 0]) payload_collision_body_local();
+            rotate([alt, 0, 0])
+                payload_collision_body_local(payload_screw_y = payload_screw_y);
 }
 
 module alt_external_obstruction_local() {
