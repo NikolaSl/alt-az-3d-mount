@@ -6,7 +6,9 @@ on:
     paths:
       - "src/**"
       - "tools/motion_qa.py"
+      - "tools/payload_adjustment_qa.py"
       - "MOTION_QA_PROTOCOL.md"
+      - "MECHANICAL_INTEGRITY_PROTOCOL.md"
       - "docs/motion-sweep-plan.md"
       - ".github/workflows/motion-qa.yml"
   workflow_dispatch:
@@ -53,6 +55,11 @@ jobs:
         run: |
           python tools/motion_qa.py --clearance-margin 0.5 --alt-step 1
           cat build/motion-qa/SUMMARY.md
+
+      - name: Run payload adjustment internal solid-pair sweep
+        run: |
+          python tools/payload_adjustment_qa.py --step 0.5
+          cat build/motion-qa/payload-adjustment/SUMMARY.md
 
       - name: Upload motion QA evidence
         if: always()
