@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Fast mesh-based multi-state motion QA for the Alt-Az mount.
 
-OpenSCAD is used once per reusable diagnostic solid. Python-FCL then moves the
-meshes through the full ALT range and the payload balancing adjustment range
-without repeatedly invoking CGAL.
+OpenSCAD exports reusable diagnostic solids once. Python-FCL then evaluates the
+full ALT range and payload balancing adjustment without repeatedly invoking CAD
+booleans.
 
-AZ collision clearance for the current mechanical design is covered analytically:
-- payload, adjustable fastener and fixed upper structure rotate together in AZ;
-- the lower collision solid is a conservative rotationally symmetric envelope.
-Asymmetric future cables/accessories must be modeled explicitly.
+The dense ALT×slider grids are collision-exclusion grids. They intentionally use
+FCL collision queries at every state rather than an expensive distance solve at
+every state. Required positive margins are proven either by a clearance-expanded
+obstruction or by the dedicated internal payload-adjustment QA.
 """
 
 from __future__ import annotations
@@ -79,7 +79,6 @@ def export_diag_mesh(root: Path, outdir: Path, *, mode: int, name: str,
 
 
 def payload_transform(alt_deg: float, axis_z: float) -> np.ndarray:
-    # OpenSCAD: translate([0,0,axis_z]) rotate([alt,0,0]) local_body().
     a = math.radians(alt_deg)
     c, s = math.cos(a), math.sin(a)
     matrix = np.eye(4)
@@ -89,12 +88,13 @@ def payload_transform(alt_deg: float, axis_z: float) -> np.ndarray:
 
 
 def fastener_transform(alt_deg: float, axis_z: float, slider_y: float) -> np.ndarray:
-    # Local slider translation happens before the full payload ALT transform.
+    # Local balance translation is applied before the payload's ALT transform.
     return payload_transform(alt_deg, axis_z) @ translation_matrix([0.0, slider_y, 0.0])
 
 
 def collision_sweep(payload: trimesh.Trimesh, fixed: trimesh.Trimesh,
                     *, axis_z: float, alt_values: list[float], name: str) -> dict:
+    """Structural sweep also computes minimum distance because it has only 111 states."""
     manager = CollisionManager()
     manager.add_object(name, fixed)
     samples, collisions = [], []
@@ -122,42 +122,32 @@ def collision_sweep(payload: trimesh.Trimesh, fixed: trimesh.Trimesh,
     }
 
 
-def fastener_state_grid(fastener: trimesh.Trimesh, fixed: trimesh.Trimesh,
-                        *, axis_z: float, alt_values: list[float],
-                        slider_values: list[float], name: str,
-                        minimum_clearance: float = 0.0) -> dict:
+def fastener_collision_grid(fastener: trimesh.Trimesh, fixed: trimesh.Trimesh,
+                            *, axis_z: float, alt_values: list[float],
+                            slider_values: list[float], name: str) -> dict:
+    """Exhaustively sample collision state without redundant min-distance queries.
+
+    A positive safety margin is represented by checking against an expanded
+    obstruction mesh. This keeps full state coverage fast enough for routine CI.
+    """
     manager = CollisionManager()
     manager.add_object(name, fixed)
-    samples, failures = [], []
-    min_distance, min_state = math.inf, None
-    tolerance = 1e-6
+    failures = []
+    checked = 0
     for slider_y in slider_values:
         for alt in alt_values:
+            checked += 1
             transform = fastener_transform(alt, axis_z, slider_y)
             hit = bool(manager.in_collision_single(fastener, transform=transform))
-            distance = float(manager.min_distance_single(fastener, transform=transform))
-            clear = (not hit) and distance + tolerance >= minimum_clearance
-            if not clear:
-                failures.append({"alt_deg": alt, "payload_screw_y_mm": slider_y,
-                                 "collision": hit, "distance_mm": distance})
-            if distance < min_distance:
-                min_distance = distance
-                min_state = {"alt_deg": alt, "payload_screw_y_mm": slider_y}
-            samples.append({"alt_deg": alt, "payload_screw_y_mm": slider_y,
-                            "collision": hit, "distance_mm": distance,
-                            "required_clearance_mm": minimum_clearance,
-                            "clearance_ok": clear})
+            if hit:
+                failures.append({"alt_deg": alt, "payload_screw_y_mm": slider_y})
     return {
         "name": name,
-        "status": "CLEAR" if not failures else "FAIL",
-        "sample_count": len(samples),
+        "status": "CLEAR" if not failures else "COLLISION",
+        "sample_count": checked,
         "alt_samples": len(alt_values),
         "slider_samples": len(slider_values),
-        "minimum_required_clearance_mm": minimum_clearance,
-        "minimum_distance_mm": min_distance,
-        "minimum_distance_state": min_state,
         "failures": failures,
-        "samples": samples,
     }
 
 
@@ -247,18 +237,18 @@ def main() -> int:
                                          alt_values=alt_values,
                                          name=f"lower-expanded-{args.clearance_margin}mm")
 
-    # The adjustable payload fastener is checked over the full ALT × slider grid.
-    fastener_upper_grid = fastener_state_grid(
+    # Full ALT × payload-adjustment Cartesian grid for the adjustable fastener.
+    fastener_upper_grid = fastener_collision_grid(
         fastener, upper, axis_z=axis_z, alt_values=alt_values,
         slider_values=slider_values, name="fastener-vs-upper")
-    fastener_lower_grid = fastener_state_grid(
+    fastener_lower_grid = fastener_collision_grid(
         fastener, lower, axis_z=axis_z, alt_values=alt_values,
         slider_values=slider_values, name="fastener-vs-lower")
-    fastener_lower_margin_grid = fastener_state_grid(
+    # Clearance is proven by collision-testing the already expanded lower body.
+    fastener_lower_margin_grid = fastener_collision_grid(
         fastener, lower_margin, axis_z=axis_z, alt_values=alt_values,
         slider_values=slider_values, name="fastener-vs-expanded-lower")
 
-    # Analytic invariant checks are a second implementation for simple relationships.
     analytic_out = outdir / "analytic-clearance.csg"
     analytic = run(["openscad", "-D", f"QA_MARGIN={args.clearance_margin}",
                     "-o", str(analytic_out),
@@ -267,7 +257,7 @@ def main() -> int:
         token in analytic.stdout for token in ("ERROR:", "Assertion", "Parser error"))
     analytic_out.unlink(missing_ok=True)
 
-    # AZ and coupled configuration-space compile sampling exercises the actual full assembly.
+    # Actual-assembly AZ/coupled compilation guards against transform/wiring mistakes.
     pose_checks = []
     for az in range(0, 361, 10):
         pose_checks.append(compile_pose(root, outdir, az=az, alt=0,
@@ -277,7 +267,6 @@ def main() -> int:
             pose_checks.append(compile_pose(root, outdir, az=az, alt=alt,
                                             label=f"grid-az{az:03d}-alt{alt:+04d}"))
 
-    # Explicit actual-assembly checks at both payload-adjustment endpoints.
     for payload_y, y_label in [(slider_min, "min"), (slider_max, "max")]:
         for alt in [-20, 0, 90]:
             pose_checks.append(compile_pose(
@@ -316,7 +305,7 @@ def main() -> int:
         "symmetry_basis": (
             "Upper structure, payload and payload fastener undergo the same rigid AZ rotation. "
             "The lower diagnostic mesh is a conservative rotationally symmetric superset of the "
-            "actual lower exterior. Therefore current rigid collision distances do not depend on AZ."
+            "actual lower exterior. Therefore current rigid collision relationships do not depend on AZ."
         ),
         "diagnostic_meshes": {
             "payload_structural": payload_meta,
@@ -345,14 +334,13 @@ def main() -> int:
         "slider_step_mm": args.slider_step,
         "slider_samples": len(slider_values),
         "fastener_alt_slider_states_per_obstruction": len(alt_values) * len(slider_values),
+        "fastener_external_grid_obstructions": 3,
         "upper_min_distance_mm": upper_sweep["minimum_distance_mm"],
         "upper_min_distance_alt_deg": upper_sweep["minimum_distance_alt_deg"],
         "lower_min_distance_mm": lower_sweep["minimum_distance_mm"],
         "lower_min_distance_alt_deg": lower_sweep["minimum_distance_alt_deg"],
         "expanded_lower_min_distance_mm": lower_margin_sweep["minimum_distance_mm"],
         "expanded_lower_min_distance_alt_deg": lower_margin_sweep["minimum_distance_alt_deg"],
-        "fastener_upper_min_distance_mm": fastener_upper_grid["minimum_distance_mm"],
-        "fastener_upper_min_state": fastener_upper_grid["minimum_distance_state"],
         "clearance_margin_mm": args.clearance_margin,
         "az_compile_samples": 37,
         "coupled_grid_configurations": 32,
@@ -363,14 +351,14 @@ def main() -> int:
     report["summary"] = summary
     (outdir / "motion-qa.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
+    grid_states = len(alt_values) * len(slider_values)
     md = ["# Motion QA run", "", f"Result: **{summary['result']}**", "",
           f"- ALT structural sweep: -20°..90° every {args.alt_step:g}° ({len(alt_values)} samples).",
           f"- Payload balancing range: {slider_min:.3f}..{slider_max:.3f} mm every {args.slider_step:.3f} mm ({len(slider_values)} samples).",
-          f"- Adjustable fastener external grid: {len(alt_values) * len(slider_values)} ALT×slider states per obstruction.",
+          f"- Adjustable fastener grid: {grid_states} ALT×slider states against each of 3 obstruction envelopes ({grid_states * 3} collision queries).",
           f"- Minimum payload structural body→upper distance: {summary['upper_min_distance_mm']:.3f} mm at ALT {summary['upper_min_distance_alt_deg']}°.",
           f"- Minimum payload→lower conservative-envelope distance: {summary['lower_min_distance_mm']:.3f} mm at ALT {summary['lower_min_distance_alt_deg']}°.",
-          f"- Expanded lower-envelope ({args.clearance_margin:.2f} mm) minimum distance: {summary['expanded_lower_min_distance_mm']:.3f} mm at ALT {summary['expanded_lower_min_distance_alt_deg']}°.",
-          f"- Minimum adjustable-fastener→upper distance: {summary['fastener_upper_min_distance_mm']:.3f} mm at {summary['fastener_upper_min_state']}.",
+          f"- Expanded lower-envelope ({args.clearance_margin:.2f} mm) minimum structural distance: {summary['expanded_lower_min_distance_mm']:.3f} mm at ALT {summary['expanded_lower_min_distance_alt_deg']}°.",
           "- AZ compile sweep: 0°..360° every 10°, including wrap endpoint.",
           "- Coupled grid: 8 AZ positions × 4 ALT positions = 32 configurations.",
           "- Actual full assembly also compiles at both payload-slider endpoints for ALT -20°, 0°, 90°.",
@@ -380,7 +368,7 @@ def main() -> int:
         md += ["## Failures", "", f"Failure count: {len(failures)}. See motion-qa.json for details."]
     else:
         md += ["No forbidden rigid-body collision was found in the sampled operational/adjustment state space.", "",
-               "Internal payload fastener↔shaft/clamp exclusion is additionally checked by tools/payload_adjustment_qa.py.", "",
+               "Internal payload fastener↔shaft/clamp exclusion and its positive clearances are additionally checked by tools/payload_adjustment_qa.py.", "",
                "Physical cable routing, backlash, compliance, printer fit, torque and tabletop overturn stability remain separate verification gates."]
     (outdir / "SUMMARY.md").write_text("\n".join(md) + "\n", encoding="utf-8")
     print(json.dumps(summary, indent=2))
